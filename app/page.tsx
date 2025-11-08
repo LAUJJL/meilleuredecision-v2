@@ -148,7 +148,7 @@ export default function Home() {
                     />
                     <input
                       className="border rounded-lg p-2"
-                      placeholder="Reconnaissance courte (1 ligne)"
+                      placeholder="Définition courte (1 ligne)"
                       value={seqTag}
                       maxLength={120}
                       onChange={e => setSeqTag(e.target.value)}
