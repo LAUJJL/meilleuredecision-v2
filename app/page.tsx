@@ -1,141 +1,108 @@
-// app/phase0/page.tsx
+// app/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import {
   getState,
-  listPhases,
-  updatePhase0Draft,
-  validatePhase0,
+  createProject, selectProject,
+  createSequence, selectSequence,
+  listPhases
 } from "@/lib/rps_v3";
 
-export default function Phase0() {
+export default function Home() {
+  const [tick, setTick] = useState(0);
   const s = getState();
-  const project = s.projects.find(p => p.id === s.currentProjectId);
-  const sequence = s.sequences.find(r => r.id === s.currentSequenceId);
+  const projects = s.projects;
+  const sequences = s.sequences.filter(seq => seq.projectId === s.currentProjectId);
+  const currentProjectId = s.currentProjectId;
+  const currentSequenceId = s.currentSequenceId;
 
-  // sécurité : si pas de contexte → Accueil
-  useEffect(() => {
-    if (!project || !sequence) window.location.href = "/";
-  }, [project, sequence]);
+  const [pTitle, setPTitle] = useState("");
+  const [pTag, setPTag] = useState("");
+  const [seqTitle, setSeqTitle] = useState("");
+  const [seqTag, setSeqTag] = useState("");
 
-  const phases = useMemo(() => sequence ? listPhases(sequence.id) : [], [sequence]);
-  const p0 = phases.find(p => p.idx === 0);
+  const refresh = () => setTick(v => v + 1);
+  useEffect(() => {}, [tick]);
 
-  const [draft, setDraft] = useState(p0?.draft || "");
-  const [testsDone, setTestsDone] = useState(false);
-  const [bypassReason, setBypassReason] = useState("");
-
-  useEffect(() => {
-    if (p0 && !p0.lockedAt) {
-      setDraft(p0.draft || "");
-    }
-  }, [p0]);
-
-  if (!project || !sequence || !p0) return null;
-
-  const locked = !!p0.lockedAt;
-
-  const onSaveDraft = (value: string) => {
-    setDraft(value);
-    updatePhase0Draft(value);
+  const openPhase0 = () => {
+    if (!currentSequenceId) return;
+    window.location.href = "/phase0";
   };
 
-  const canValidate = () => {
-    if (locked) return false;
-    const textOK = (draft || "").trim().length > 0;
-    if (!textOK) return false;
-    if (testsDone) return true;
-    // sinon, il faut une raison de contournement
-    return (bypassReason || "").trim().length >= 10; // petite barrière utile
-  };
-
-  const onValidate = () => {
-    if (!canValidate()) return;
-    validatePhase0({ testsDone, bypassReason: testsDone ? undefined : bypassReason });
-    window.location.href = "/"; // Phase 1 à venir ; retour Accueil pour l’instant
-  };
+  const previousSequences = useMemo(() => {
+    return sequences.map(seq => {
+      const phases = listPhases(seq.id);
+      const p0 = phases.find(p => p.idx === 0);
+      const status = p0?.lockedAt ? "Phase 0 validée" : "Phase 0 (en cours)";
+      return { seq, status };
+    });
+  }, [sequences, tick]);
 
   return (
     <main className="min-h-screen grid place-items-center p-6">
-      <div className="w-full max-w-2xl space-y-6">
-        <h1 className="text-xl font-semibold text-center">Phase 0 — Définition longue du raffinement</h1>
+      <div className="w-full max-w-3xl space-y-10">
+        <header className="text-center space-y-1">
+          <h1 className="text-2xl font-semibold">Décisions par simulation</h1>
+          <p className="text-sm opacity-70">Flux immuable : Projet → Séquence → Phase 0 → …</p>
+        </header>
 
-        {/* Contexte (lecture seule) */}
-        <div className="rounded-lg border p-3 bg-gray-50 text-sm">
-          <div><span className="opacity-70">Projet :</span> {project.title} — <span className="opacity-70">Tag :</span> {project.tag || "—"}</div>
-          <div className="mt-1"><span className="opacity-70">Séquence :</span> {sequence.title} — <span className="opacity-70">Tag :</span> {sequence.tag || "—"}</div>
-        </div>
-
-        {/* Phase 0 */}
-        {locked ? (
-          <div className="space-y-3">
-            <div className="text-sm opacity-70">Cette phase est validée (lecture seule).</div>
-            <div className="rounded-lg border p-3 whitespace-pre-wrap bg-white">{p0.content || "—"}</div>
-            <div className="text-sm">
-              {p0.testsDone
-                ? "✅ Tests de compréhension effectués (déclarés)."
-                : `⚠️ Validée sans tests — raison : ${p0.bypassReason || "non fournie"}`}
-            </div>
-            <div className="flex gap-3">
-              <a href="/" className="px-4 py-2 rounded-lg border">Accueil</a>
-            </div>
-
-            {/* Visionnage des phases précédentes (ici seulement phase 0) */}
-            <div className="text-sm opacity-70 pt-4">Phases validées (lecture seule) :</div>
-            <ul className="text-sm list-disc pl-5">
-              <li>Phase 0 (présente) — validée {p0.lockedAt}</li>
-            </ul>
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">1) Définir un problème (Projet)</h2>
+          <div className="grid gap-2">
+            <input className="border rounded-lg p-2" placeholder="Nom du problème" value={pTitle} maxLength={120} onChange={e => setPTitle(e.target.value)} />
+            <input className="border rounded-lg p-2" placeholder="Reconnaissance courte" value={pTag} maxLength={200} onChange={e => setPTag(e.target.value)} />
+            <button className="px-4 py-2 rounded-lg border" onClick={() => { if (!pTitle.trim()) return; createProject(pTitle.trim(), pTag.trim()); setPTitle(""); setPTag(""); refresh(); }}>
+              Créer ce projet (verrouillé)
+            </button>
           </div>
-        ) : (
-          <div className="space-y-4">
-            <label className="block">
-              <span className="text-sm">Définition longue (~100 mots)</span>
-              <textarea
-                className="mt-1 w-full border rounded-lg p-2 h-40"
-                placeholder="Expliquez précisément ce raffinement : hypothèses, périmètre, ce qui le distingue d'autres séquences…"
-                value={draft}
-                onChange={e => onSaveDraft(e.target.value)}
-              />
-            </label>
+        </section>
 
-            <div className="rounded-lg border p-3 space-y-2">
-              <div className="text-sm font-medium">Tests de compréhension (recommandés)</div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={testsDone} onChange={e => setTestsDone(e.target.checked)} />
-                J’ai réalisé un rapide auto-test (lecture attentive, cohérence interne, scénario-type).
-              </label>
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">2) Choisir un projet existant</h2>
+          {projects.length === 0 ? (
+            <div className="text-sm opacity-60">Aucun projet pour le moment.</div>
+          ) : (
+            <>
+              <select className="border rounded-lg p-2 w-full" value={currentProjectId || ""} onChange={e => { selectProject(e.target.value); refresh(); }}>
+                <option value="">— Choisir —</option>
+                {projects.map(p => (<option key={p.id} value={p.id}>{p.title}</option>))}
+              </select>
 
-              {!testsDone && (
-                <div className="space-y-1">
-                  <div className="text-xs opacity-70">
-                    Vous pouvez valider sans tests, mais indiquez une raison (10+ caractères) pour lever le blocage.
+              {currentProjectId && (
+                <div className="border rounded-lg p-3 space-y-3 bg-gray-50">
+                  <div className="text-sm opacity-70">Séquences de ce projet</div>
+
+                  <div className="grid gap-2">
+                    <input className="border rounded-lg p-2" placeholder="Nom du raffinement (80 car.)" value={seqTitle} maxLength={80} onChange={e => setSeqTitle(e.target.value)} />
+                    <input className="border rounded-lg p-2" placeholder="Reconnaissance courte" value={seqTag} maxLength={120} onChange={e => setSeqTag(e.target.value)} />
+                    <button className="px-4 py-2 rounded-lg border" onClick={() => {
+                      if (!seqTitle.trim()) return;
+                      const id = createSequence(seqTitle.trim(), seqTag.trim());
+                      if (id) { selectSequence(id); refresh(); window.location.href = "/phase0"; }
+                    }}>
+                      Créer une séquence (ouvre Phase 0)
+                    </button>
                   </div>
-                  <input
-                    className="border rounded-lg p-2 w-full text-sm"
-                    placeholder="Raison pour valider sans tests…"
-                    value={bypassReason}
-                    onChange={e => setBypassReason(e.target.value)}
-                  />
+
+                  {previousSequences.length === 0 ? (
+                    <div className="text-sm opacity-60">Aucune séquence pour l’instant.</div>
+                  ) : (
+                    <ul className="list-disc pl-5 text-sm space-y-1">
+                      {previousSequences.map(({ seq, status }) => (
+                        <li key={seq.id}>
+                          <button className="underline" onClick={() => { selectSequence(seq.id); refresh(); openPhase0(); }}>
+                            {seq.title} • {status}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
-            </div>
-
-            <div className="flex gap-3">
-              <a href="/" className="px-4 py-2 rounded-lg border">Accueil</a>
-              <button
-                className={`px-4 py-2 rounded-lg border ${canValidate() ? "" : "opacity-50 cursor-not-allowed"}`}
-                onClick={onValidate}
-                disabled={!canValidate()}
-              >
-                Valider & Continuer
-              </button>
-            </div>
-
-            {/* Visionnage des phases précédentes (ici aucune validée encore) */}
-            <div className="text-sm opacity-70 pt-2">Phases validées : aucune pour le moment.</div>
-          </div>
-        )}
+            </>
+          )}
+        </section>
       </div>
     </main>
   );
