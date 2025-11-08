@@ -7,7 +7,7 @@ import {
   listPhases,
   updatePhase0Draft,
   validatePhase0,
-  clearSelection, // ✅ nouveau
+  clearSelection,
 } from "@/lib/rps_v3";
 
 export default function Phase0() {
@@ -16,15 +16,13 @@ export default function Phase0() {
   const sequence = s.sequences.find(r => r.id === s.currentSequenceId);
 
   useEffect(() => {
-    if (!project || !sequence) window.location.href = "/";
+    if (!project || !sequence) window.location.href = "/projects";
   }, [project, sequence]);
 
   const phases = useMemo(() => sequence ? listPhases(sequence.id) : [], [sequence]);
   const p0 = phases.find(p => p.idx === 0);
 
   const [draft, setDraft] = useState(p0?.draft || "");
-  const [testsDone, setTestsDone] = useState(false);
-  const [bypassReason, setBypassReason] = useState("");
 
   useEffect(() => {
     if (p0 && !p0.lockedAt) setDraft(p0.draft || "");
@@ -39,23 +37,18 @@ export default function Phase0() {
     updatePhase0Draft(value);
   };
 
-  const canValidate = () => {
-    if (locked) return false;
-    const textOK = (draft || "").trim().length > 0;
-    if (!textOK) return false;
-    if (testsDone) return true;
-    return (bypassReason || "").trim().length >= 10;
-  };
-
   const onValidate = () => {
-    if (!canValidate()) return;
-    validatePhase0({ testsDone, bypassReason: testsDone ? undefined : bypassReason });
-    window.location.href = "/"; // Phase 1 à venir
+    if (locked) return;
+    if (!(draft || "").trim()) return;
+    // v3 minimaliste : on valide sans logique de tests (testsDone = true par défaut)
+    validatePhase0({ testsDone: true });
+    // À terme : rediriger vers /phase1 ; pour l'instant on revient aux raffinements
+    window.location.href = "/refinements";
   };
 
   const goChooseAnotherProject = () => {
-    clearSelection();               // ✅ on efface projet & séquence courants
-    window.location.href = "/";     // retour Accueil pour recréer/choisir
+    clearSelection();
+    window.location.href = "/projects";
   };
 
   return (
@@ -65,31 +58,24 @@ export default function Phase0() {
 
         {/* Contexte (lecture seule) : seulement les NOMS */}
         <div className="rounded-lg border p-3 bg-gray-50 text-sm">
-          <div><span className="opacity-70">Projet :</span> {project.title}</div>
+          <div><span className="opacity-70">Problème :</span> {project.title}</div>
           <div className="mt-1"><span className="opacity-70">Raffinement :</span> {sequence.title}</div>
         </div>
 
-        {/* Phase précédente (lecture seule) — ici rien en Phase 0 */}
-        {/* (Pour les phases > 0, on affichera nom + contenu de la phase précédente) */}
+        {/* Phase précédente : rien à afficher en Phase 0 */}
 
         {locked ? (
           <div className="space-y-3">
             <div className="text-sm opacity-70">Cette phase est validée (lecture seule).</div>
             <div className="rounded-lg border p-3 whitespace-pre-wrap bg-white">{p0.content || "—"}</div>
-            <div className="text-sm">
-              {p0.testsDone
-                ? "✅ Tests de compréhension effectués (déclarés)."
-                : `⚠️ Validée sans tests — raison : ${p0.bypassReason || "non fournie"}`}
-            </div>
             <div className="flex gap-3">
-              <a href="/" className="px-4 py-2 rounded-lg border">Accueil</a>
+              <a href="/refinements" className="px-4 py-2 rounded-lg border">Raffinements</a>
               <button className="px-4 py-2 rounded-lg border" onClick={goChooseAnotherProject}>
-                Choisir / créer un autre projet
+                Choisir / créer un autre problème
               </button>
             </div>
 
-            {/* Visionnage des phases validées */}
-            <div className="text-sm opacity-70 pt-4">Phases validées (lecture seule) :</div>
+            <div className="text-sm opacity-70 pt-4">Phases validées :</div>
             <ul className="text-sm list-disc pl-5">
               <li>Phase 0 — validée {p0.lockedAt}</li>
             </ul>
@@ -106,45 +92,21 @@ export default function Phase0() {
               />
             </label>
 
-            <div className="rounded-lg border p-3 space-y-2">
-              <div className="text-sm font-medium">Tests de compréhension (recommandés)</div>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={testsDone} onChange={e => setTestsDone(e.target.checked)} />
-                J’ai réalisé un rapide auto-test (lecture attentive, cohérence interne, scénario-type).
-              </label>
-
-              {!testsDone && (
-                <div className="space-y-1">
-                  <div className="text-xs opacity-70">
-                    Vous pouvez valider sans tests, mais indiquez une raison (10+ caractères) pour lever le blocage.
-                  </div>
-                  <input
-                    className="border rounded-lg p-2 w-full text-sm"
-                    placeholder="Raison pour valider sans tests…"
-                    value={bypassReason}
-                    onChange={e => setBypassReason(e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
-
             <div className="flex gap-3">
-              <a href="/" className="px-4 py-2 rounded-lg border">Accueil</a>
+              <a href="/refinements" className="px-4 py-2 rounded-lg border">Raffinements</a>
               <button
-                className={`px-4 py-2 rounded-lg border ${canValidate() ? "" : "opacity-50 cursor-not-allowed"}`}
+                className={`px-4 py-2 rounded-lg border ${draft.trim() ? "" : "opacity-50 cursor-not-allowed"}`}
                 onClick={onValidate}
-                disabled={!canValidate()}
+                disabled={!draft.trim()}
               >
                 Valider & Continuer
               </button>
               <button className="px-4 py-2 rounded-lg border" onClick={goChooseAnotherProject}>
-                Choisir / créer un autre projet
+                Choisir / créer un autre problème
               </button>
             </div>
 
-            <div className="text-sm opacity-70 pt-2">
-              Phases validées : aucune pour le moment.
-            </div>
+            <div className="text-sm opacity-70 pt-2">Phases validées : aucune pour le moment.</div>
           </div>
         )}
       </div>
