@@ -147,3 +147,8 @@ export function validatePhase0(opts: { testsDone: boolean; bypassReason?: string
   });
   setState({ ...s, phases });
 }
+export function clearSelection() {
+  const s = getState();
+  setState({ ...s, currentProjectId: undefined, currentSequenceId: undefined });
+}
+
