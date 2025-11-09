@@ -1,255 +1,114 @@
-// lib/rps_v3.ts
-// v3 robuste : Problème → Vision → Phases (0 = définition vision ; 1 = stock + flux constants)
+// app/refinements/page.tsx
+"use client";
 
-export type Project = {
-  id: string;
-  title: string;
-  tag: string;
-  lockedAt: string;
-};
+import { useEffect, useMemo, useState } from "react";
+import {
+  getState,
+  selectSequence,
+  createSequence,
+  listPhases,
+  deleteSequence,
+  clearSelection,
+} from "@/lib/rps_v3";
 
-export type Sequence = {
-  id: string;
-  projectId: string;
-  title: string;
-  tag: string;
-  lockedAt: string;
-};
-
-export type Phase = {
-  id: string;
-  sequenceId: string;
-  idx: number;
-  draft?: string;
-  content?: string;
-  testsDone?: boolean;
-  bypassReason?: string;
-  lockedAt?: string;
-};
-
-type RpsState = {
-  projects: Project[];
-  sequences: Sequence[];
-  phases: Phase[];
-  currentProjectId?: string;
-  currentSequenceId?: string;
-};
-
-const KEY = "rps.v3";
-
-function nowISO() { return new Date().toISOString(); }
-function safeParse<T>(raw: string | null, fallback: T): T {
-  if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
-}
-function uuid(): string {
-  try {
-    // @ts-ignore
-    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  } catch {}
-  return "id-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
-}
-
-export function getState(): RpsState {
-  if (typeof window === "undefined") return { projects: [], sequences: [], phases: [] };
-  return safeParse<RpsState>(localStorage.getItem(KEY), { projects: [], sequences: [], phases: [] });
-}
-function setState(next: RpsState) {
-  if (typeof window === "undefined") return;
-  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
-}
-
-/* Sélection */
-export function clearSelection() {
+export default function RefinementsPage() {
   const s = getState();
-  setState({ ...s, currentProjectId: undefined, currentSequenceId: undefined });
-}
+  const project = s.projects.find(p => p.id === s.currentProjectId);
+  const sequences = useMemo(
+    () => s.sequences.filter(r => r.projectId === s.currentProjectId),
+    [s]
+  );
 
-/* Projets */
-export function createProject(title: string, tag: string): string {
-  const s = getState();
-  const id = uuid();
-  const p: Project = { id, title, tag, lockedAt: nowISO() };
-  const next = { ...s, projects: [p, ...s.projects], currentProjectId: id, currentSequenceId: undefined };
-  setState(next);
-  return id;
-}
-export function selectProject(projectId: string) {
-  const s = getState();
-  const exists = s.projects.some(p => p.id === projectId);
-  const next = { ...s, currentProjectId: exists ? projectId : undefined, currentSequenceId: undefined };
-  setState(next);
-}
+  useEffect(() => {
+    if (!project) window.location.href = "/projects";
+  }, [project]);
 
-/* Visions */
-export function createSequence(title: string, tag: string): string | undefined {
-  const s = getState();
-  if (!s.currentProjectId) return;
-  const id = uuid();
-  const seq: Sequence = { id, projectId: s.currentProjectId, title, tag, lockedAt: nowISO() };
-  const next = { ...s, sequences: [seq, ...s.sequences], currentSequenceId: id };
-  setState(next);
-  ensurePhase(id, 0);
-  return id;
-}
-export function selectSequence(sequenceId: string) {
-  const s = getState();
-  const exists = s.sequences.some(r => r.id === sequenceId);
-  const next = { ...s, currentSequenceId: exists ? sequenceId : undefined };
-  setState(next);
-}
+  const [title, setTitle] = useState("");
+  const [tag, setTag] = useState("");
 
-/* SUPPRIMER une vision (sequence) + ses phases */
-export function deleteSequence(sequenceId: string) {
-  const s = getState();
-  const next = {
-    ...s,
-    sequences: s.sequences.filter(r => r.id !== sequenceId),
-    phases: s.phases.filter(ph => ph.sequenceId !== sequenceId),
+  if (!project) return null;
+
+  const openSeq = (id: string) => {
+    selectSequence(id);
+    window.location.href = "/phase0";
   };
-  if (next.currentSequenceId === sequenceId) next.currentSequenceId = undefined;
-  setState(next);
-}
 
-/* SUPPRIMER un projet (et tout ce qui va avec) */
-export function deleteProject(projectId: string) {
-  const s = getState();
-  const seqIds = s.sequences.filter(r => r.projectId === projectId).map(r => r.id);
-  const next = {
-    ...s,
-    projects: s.projects.filter(p => p.id !== projectId),
-    sequences: s.sequences.filter(r => r.projectId !== projectId),
-    phases: s.phases.filter(ph => !seqIds.includes(ph.sequenceId)),
+  const create = () => {
+    const name = title.trim();
+    if (!name) return;
+    const id = createSequence(name, tag.trim());
+    if (id) window.location.href = "/phase0";
   };
-  if (next.currentProjectId === projectId) next.currentProjectId = undefined;
-  if (next.currentSequenceId && seqIds.includes(next.currentSequenceId)) next.currentSequenceId = undefined;
-  setState(next);
-}
 
-/* Phases utilitaires */
-export function listPhases(sequenceId: string): Phase[] {
-  return getState().phases.filter(ph => ph.sequenceId === sequenceId).sort((a,b) => a.idx - b.idx);
-}
-export function getPhase(sequenceId: string, idx: number): Phase | undefined {
-  return getState().phases.find(ph => ph.sequenceId === sequenceId && ph.idx === idx);
-}
-function ensurePhase(sequenceId: string, idx: number) {
-  const s = getState();
-  if (!s.phases.some(ph => ph.sequenceId === sequenceId && ph.idx === idx)) {
-    const ph: Phase = { id: uuid(), sequenceId, idx, draft: "" };
-    setState({ ...s, phases: [ph, ...s.phases] });
-  }
-}
-
-/* Phase 0 */
-export function updatePhase0Draft(content: string) {
-  const s = getState();
-  if (!s.currentSequenceId) return;
-  const phases = s.phases.map(ph => {
-    if (ph.sequenceId === s.currentSequenceId && ph.idx === 0 && !ph.lockedAt) {
-      return { ...ph, draft: content ?? "" };
-    }
-    return ph;
-  });
-  setState({ ...s, phases });
-}
-export function validatePhase0(opts: { testsDone: boolean; bypassReason?: string }) {
-  const s = getState();
-  if (!s.currentSequenceId) return;
-  const phases = s.phases.map(ph => {
-    if (ph.sequenceId === s.currentSequenceId && ph.idx === 0 && !ph.lockedAt) {
-      const text = (ph.draft || "").trim();
-      return {
-        ...ph,
-        content: text,
-        testsDone: !!opts.testsDone,
-        bypassReason: !opts.testsDone ? (opts.bypassReason || "").trim() : undefined,
-        lockedAt: nowISO(),
-        draft: undefined,
-      };
-    }
-    return ph;
-  });
-  setState({ ...s, phases });
-  ensurePhase(s.currentSequenceId, 1);
-}
-
-/* Phase 1 : Stock + flux constants */
-export const TIME_UNITS = ["seconde", "minute", "heure", "jour", "semaine", "mois", "trimestre", "semestre", "année"] as const;
-export type TimeUnit = typeof TIME_UNITS[number];
-
-export type SliderKey = "inflow" | "outflow" | "initial";
-export type Phase1Spec = {
-  stockName: string;
-  stockUnit: string;
-  timeUnit: TimeUnit;
-  inflowName: string;
-  outflowName: string;
-  initialStockName: string;
-
-  initialStockValue: number;
-  inflowValue: number;
-  outflowValue: number;
-  horizon: number;
-
-  sliderKeys: SliderKey[];
-
-  // bornes figées pour sliders (si utilisés)
-  sliderMaxInflow?: number;
-  sliderMaxOutflow?: number;
-  sliderMaxInitial?: number;
-
-  derivedFlowUnit?: string;
-  derivedStockUnit?: string;
-};
-
-export function getPhase1(sequenceId: string) {
-  return getPhase(sequenceId, 1);
-}
-export function ensurePhase1(sequenceId: string) {
-  ensurePhase(sequenceId, 1);
-}
-
-function clampSliders(keys: SliderKey[]): SliderKey[] {
-  const uniq: SliderKey[] = [];
-  for (const k of keys || []) {
-    if (!uniq.includes(k)) uniq.push(k);
-    if (uniq.length >= 2) break;
-  }
-  return uniq;
-}
-
-export function updatePhase1Draft(spec: Phase1Spec) {
-  const s = getState();
-  if (!s.currentSequenceId) return;
-  const sliderKeys = clampSliders(spec?.sliderKeys || []);
-  const enriched: Phase1Spec = {
-    ...spec,
-    sliderKeys,
-    derivedFlowUnit: spec?.stockUnit ? `${spec.stockUnit} / ${spec.timeUnit}` : "",
-    derivedStockUnit: spec?.stockUnit || "",
+  const backToProjects = () => {
+    clearSelection();
+    window.location.href = "/projects";
   };
-  let draftStr = "";
-  try { draftStr = JSON.stringify(enriched); } catch { draftStr = ""; }
-  const phases = s.phases.map(ph => {
-    if (ph.sequenceId === s.currentSequenceId && ph.idx === 1 && !ph.lockedAt) {
-      return { ...ph, draft: draftStr };
-    }
-    return ph;
-  });
-  setState({ ...s, phases });
-}
 
-export function validatePhase1() {
-  const s = getState();
-  if (!s.currentSequenceId) return;
-  const phases = s.phases.map(ph => {
-    if (ph.sequenceId === s.currentSequenceId && ph.idx === 1 && !ph.lockedAt) {
-      const content = (ph.draft || "").trim();
-      if (!content) return ph;
-      return { ...ph, content, lockedAt: nowISO(), draft: undefined, testsDone: true };
-    }
-    return ph;
-  });
-  setState({ ...s, phases });
+  return (
+    <main className="min-h-screen grid place-items-center p-6">
+      <div className="w-full max-w-4xl space-y-6">
+        <h1 className="text-2xl font-semibold text-center">Visions du problème</h1>
+        <div className="text-center opacity-70">Problème : {project.title}</div>
+
+        {/* Visions existantes */}
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium">Ouvrir une vision existante</h2>
+          <ul className="space-y-1">
+            {sequences.length === 0 && <li className="opacity-60">Aucune vision pour l’instant.</li>}
+            {sequences.map(v => {
+              const p0 = listPhases(v.id).find(p => p.idx === 0);
+              const status = p0?.lockedAt ? "• Définition de la vision validée" : "• Définition de la vision (en cours)";
+              return (
+                <li key={v.id} className="flex items-center justify-between gap-3">
+                  <span>{v.title} {status ? <span className="opacity-60">{status}</span> : null}</span>
+                  <div className="flex gap-3">
+                    <button className="underline" onClick={() => openSeq(v.id)}>Ouvrir la définition de la vision</button>
+                    <button
+                      className="text-red-600 underline"
+                      onClick={() => {
+                        if (confirm("Supprimer cette vision et ses phases ?")) {
+                          deleteSequence(v.id);
+                          location.reload();
+                        }
+                      }}
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
+        {/* Nouvelle vision */}
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">Créer une nouvelle vision</h2>
+          <input
+            className="w-full border rounded-lg p-2"
+            placeholder="Nom de la vision (80 car. max)"
+            maxLength={80}
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+          />
+          <input
+            className="w-full border rounded-lg p-2"
+            placeholder="Définition courte (1 ligne)"
+            value={tag}
+            onChange={e => setTag(e.target.value)}
+          />
+          <button className="w-full border rounded-lg p-2" onClick={create}>
+            Créer une nouvelle vision (ouvre sa définition)
+          </button>
+        </section>
+
+        <div>
+          <button className="border rounded-lg px-3 py-2" onClick={backToProjects}>
+            ← Revenir aux problèmes
+          </button>
+        </div>
+      </div>
+    </main>
+  );
 }
