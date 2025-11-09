@@ -25,7 +25,7 @@ export default function ProjectsPage() {
       <div className="w-full max-w-3xl space-y-10">
         <header className="text-center space-y-1">
           <h1 className="text-2xl font-semibold">Décisions par simulation</h1>
-          <p className="text-sm opacity-70">Étape 1 : Créer ou choisir un problème.</p>
+          <p className="text-sm opacity-70">Étape 1 : Créer ou choisir un <strong>problème</strong>.</p>
         </header>
 
         {/* Créer un nouveau problème */}
@@ -85,7 +85,7 @@ export default function ProjectsPage() {
                   onClick={() => { if (currentProjectId) goRefinements(); }}
                   disabled={!currentProjectId}
                 >
-                  Continuer → Raffinements
+                  Continuer → Visions du problème
                 </button>
               </div>
             </div>
