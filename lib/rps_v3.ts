@@ -1,5 +1,5 @@
 // lib/rps_v3.ts
-// v3 : Problème → Vision → Phases (0 = définition de la vision ; 1 = stock + flux constants)
+// v3 robuste : Problème → Vision → Phases (0 = définition vision ; 1 = stock + flux constants)
 
 export type Project = {
   id: string;
@@ -42,6 +42,14 @@ function safeParse<T>(raw: string | null, fallback: T): T {
   if (!raw) return fallback;
   try { return JSON.parse(raw) as T; } catch { return fallback; }
 }
+function uuid(): string {
+  try {
+    // @ts-ignore
+    if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
+  } catch {}
+  // fallback simple
+  return "id-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
+}
 
 export function getState(): RpsState {
   if (typeof window === "undefined") return { projects: [], sequences: [], phases: [] };
@@ -49,7 +57,7 @@ export function getState(): RpsState {
 }
 function setState(next: RpsState) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(KEY, JSON.stringify(next));
+  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch {}
 }
 
 /* Sélection */
@@ -61,7 +69,7 @@ export function clearSelection() {
 /* Projets */
 export function createProject(title: string, tag: string): string {
   const s = getState();
-  const id = crypto.randomUUID();
+  const id = uuid();
   const p: Project = { id, title, tag, lockedAt: nowISO() };
   const next = { ...s, projects: [p, ...s.projects], currentProjectId: id, currentSequenceId: undefined };
   setState(next);
@@ -78,7 +86,7 @@ export function selectProject(projectId: string) {
 export function createSequence(title: string, tag: string): string | undefined {
   const s = getState();
   if (!s.currentProjectId) return;
-  const id = crypto.randomUUID();
+  const id = uuid();
   const seq: Sequence = { id, projectId: s.currentProjectId, title, tag, lockedAt: nowISO() };
   const next = { ...s, sequences: [seq, ...s.sequences], currentSequenceId: id };
   setState(next);
@@ -102,7 +110,7 @@ export function getPhase(sequenceId: string, idx: number): Phase | undefined {
 function ensurePhase(sequenceId: string, idx: number) {
   const s = getState();
   if (!s.phases.some(ph => ph.sequenceId === sequenceId && ph.idx === idx)) {
-    const ph: Phase = { id: crypto.randomUUID(), sequenceId, idx, draft: "" };
+    const ph: Phase = { id: uuid(), sequenceId, idx, draft: "" };
     setState({ ...s, phases: [ph, ...s.phases] });
   }
 }
@@ -113,7 +121,7 @@ export function updatePhase0Draft(content: string) {
   if (!s.currentSequenceId) return;
   const phases = s.phases.map(ph => {
     if (ph.sequenceId === s.currentSequenceId && ph.idx === 0 && !ph.lockedAt) {
-      return { ...ph, draft: content };
+      return { ...ph, draft: content ?? "" };
     }
     return ph;
   });
@@ -124,9 +132,10 @@ export function validatePhase0(opts: { testsDone: boolean; bypassReason?: string
   if (!s.currentSequenceId) return;
   const phases = s.phases.map(ph => {
     if (ph.sequenceId === s.currentSequenceId && ph.idx === 0 && !ph.lockedAt) {
+      const text = (ph.draft || "").trim();
       return {
         ...ph,
-        content: (ph.draft || "").trim(),
+        content: text,
         testsDone: !!opts.testsDone,
         bypassReason: !opts.testsDone ? (opts.bypassReason || "").trim() : undefined,
         lockedAt: nowISO(),
@@ -152,16 +161,13 @@ export type Phase1Spec = {
   outflowName: string;
   initialStockName: string;
 
-  // Valeurs numériques
-  initialStockValue: number; // valeur du stock au temps 0
-  inflowValue: number;       // flux constant entrant (>=0)
-  outflowValue: number;      // flux constant sortant (>=0)
-  horizon: number;           // nombre de pas (ex. 60)
+  initialStockValue: number;
+  inflowValue: number;
+  outflowValue: number;
+  horizon: number;
 
-  // Sliders (0 à 2)
-  sliderKeys: SliderKey[];   // ex. ["inflow","outflow"]
+  sliderKeys: SliderKey[];
 
-  // Unités dérivées (affichage)
   derivedFlowUnit?: string;
   derivedStockUnit?: string;
 };
@@ -175,7 +181,7 @@ export function ensurePhase1(sequenceId: string) {
 
 function clampSliders(keys: SliderKey[]): SliderKey[] {
   const uniq: SliderKey[] = [];
-  for (const k of keys) {
+  for (const k of keys || []) {
     if (!uniq.includes(k)) uniq.push(k);
     if (uniq.length >= 2) break;
   }
@@ -185,14 +191,15 @@ function clampSliders(keys: SliderKey[]): SliderKey[] {
 export function updatePhase1Draft(spec: Phase1Spec) {
   const s = getState();
   if (!s.currentSequenceId) return;
-  const sliderKeys = clampSliders(spec.sliderKeys || []);
+  const sliderKeys = clampSliders(spec?.sliderKeys || []);
   const enriched: Phase1Spec = {
     ...spec,
     sliderKeys,
-    derivedFlowUnit: spec.stockUnit ? `${spec.stockUnit} / ${spec.timeUnit}` : "",
-    derivedStockUnit: spec.stockUnit || "",
+    derivedFlowUnit: spec?.stockUnit ? `${spec.stockUnit} / ${spec.timeUnit}` : "",
+    derivedStockUnit: spec?.stockUnit || "",
   };
-  const draftStr = JSON.stringify(enriched);
+  let draftStr = "";
+  try { draftStr = JSON.stringify(enriched); } catch { draftStr = ""; }
   const phases = s.phases.map(ph => {
     if (ph.sequenceId === s.currentSequenceId && ph.idx === 1 && !ph.lockedAt) {
       return { ...ph, draft: draftStr };
