@@ -1,96 +1,107 @@
 // app/projects/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { getState, createProject, selectProject } from "@/lib/rps_v3";
+import { useMemo, useState } from "react";
+import {
+  getState,
+  createProject,
+  selectProject,
+  clearSelection,
+  deleteProject,
+  selectSequence,
+} from "@/lib/rps_v3";
 
 export default function ProjectsPage() {
-  const [tick, setTick] = useState(0);
   const s = getState();
-  const projects = s.projects;
-  const currentProjectId = s.currentProjectId;
+  const [title, setTitle] = useState("");
+  const [tag, setTag] = useState("");
 
-  const [pTitle, setPTitle] = useState("");
-  const [pTag, setPTag] = useState("");
+  const projects = useMemo(() => s.projects, [s.projects]);
 
-  const refresh = () => setTick(v => v + 1);
-  useEffect(() => {}, [tick]);
-
-  const goRefinements = () => {
+  const create = () => {
+    const name = title.trim();
+    if (!name) return;
+    createProject(name, tag.trim());
+    setTitle("");
+    setTag("");
+    // Après création, on va au choix/creation de vision
     window.location.href = "/refinements";
+  };
+
+  const open = (projectId: string) => {
+    selectProject(projectId);
+    window.location.href = "/refinements";
+  };
+
+  const purge = (projectId: string) => {
+    if (!confirm("Supprimer ce problème et toutes ses visions/phases ?")) return;
+    deleteProject(projectId);
+    // recharger la page
+    window.location.reload();
+  };
+
+  const resetSel = () => {
+    clearSelection();
+    window.location.href = "/projects";
   };
 
   return (
     <main className="min-h-screen grid place-items-center p-6">
-      <div className="w-full max-w-3xl space-y-10">
-        <header className="text-center space-y-1">
-          <h1 className="text-2xl font-semibold">Décisions par simulation</h1>
-          <p className="text-sm opacity-70">Étape 1 : Créer ou choisir un <strong>problème</strong>.</p>
-        </header>
+      <div className="w-full max-w-4xl space-y-6">
+        <h1 className="text-2xl font-semibold text-center">
+          Problèmes <span className="text-xs opacity-60">(gestion)</span>
+        </h1>
 
-        {/* Créer un nouveau problème */}
+        {/* Liste des problèmes */}
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium">Ouvrir un problème existant</h2>
+          <ul className="space-y-1">
+            {projects.length === 0 && <li className="opacity-60">Aucun problème pour l’instant.</li>}
+            {projects.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-3">
+                <div className="truncate">
+                  <span className="font-medium">{p.title}</span>
+                  {p.tag ? <span className="opacity-60"> — {p.tag}</span> : null}
+                </div>
+                <div className="flex gap-3">
+                  <button className="underline" onClick={() => open(p.id)}>
+                    Ouvrir
+                  </button>
+                  <button className="text-red-600 underline" onClick={() => purge(p.id)}>
+                    Supprimer
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Nouveau problème */}
         <section className="space-y-3">
           <h2 className="text-lg font-medium">Créer un nouveau problème</h2>
-          <div className="grid gap-2">
-            <input
-              className="border rounded-lg p-2"
-              placeholder="Nom du problème"
-              value={pTitle}
-              maxLength={120}
-              onChange={e => setPTitle(e.target.value)}
-            />
-            <input
-              className="border rounded-lg p-2"
-              placeholder="Définition courte (optionnelle)"
-              value={pTag}
-              maxLength={200}
-              onChange={e => setPTag(e.target.value)}
-            />
-            <button
-              className="px-4 py-2 rounded-lg border"
-              onClick={() => {
-                if (!pTitle.trim()) return;
-                createProject(pTitle.trim(), pTag.trim());
-                setPTitle(""); setPTag("");
-                refresh();
-                goRefinements();
-              }}
-            >
-              Créer ce problème
-            </button>
-          </div>
+          <input
+            className="w-full border rounded-lg p-2"
+            placeholder="Nom du problème (80 car. max)"
+            maxLength={80}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <input
+            className="w-full border rounded-lg p-2"
+            placeholder="Définition courte (1 ligne, optionnel)"
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+          />
+          <button className="w-full border rounded-lg p-2" onClick={create}>
+            Créer le problème (puis choisir/créer sa vision)
+          </button>
         </section>
 
-        {/* Choisir un problème existant */}
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Choisir un problème existant</h2>
-          {projects.length === 0 ? (
-            <div className="text-sm opacity-60">Aucun problème enregistré pour le moment.</div>
-          ) : (
-            <div className="grid gap-2">
-              <select
-                className="border rounded-lg p-2 w-full"
-                value={currentProjectId || ""}
-                onChange={e => { selectProject(e.target.value); refresh(); }}
-              >
-                <option value="">— Choisir un problème —</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.title}</option>
-                ))}
-              </select>
-
-              <div className="flex gap-3">
-                <button
-                  className="px-4 py-2 rounded-lg border"
-                  onClick={() => { if (currentProjectId) goRefinements(); }}
-                  disabled={!currentProjectId}
-                >
-                  Continuer → Visions du problème
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
+        <div>
+          <button className="border rounded-lg px-3 py-2" onClick={resetSel}>
+            Réinitialiser la sélection
+          </button>
+        </div>
       </div>
     </main>
   );
