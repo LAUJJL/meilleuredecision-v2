@@ -47,7 +47,6 @@ function uuid(): string {
     // @ts-ignore
     if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   } catch {}
-  // fallback simple
   return "id-" + Math.random().toString(36).slice(2) + "-" + Date.now().toString(36);
 }
 
@@ -100,7 +99,34 @@ export function selectSequence(sequenceId: string) {
   setState(next);
 }
 
-/* Phases */
+/* SUPPRIMER une vision (sequence) + ses phases */
+export function deleteSequence(sequenceId: string) {
+  const s = getState();
+  const next = {
+    ...s,
+    sequences: s.sequences.filter(r => r.id !== sequenceId),
+    phases: s.phases.filter(ph => ph.sequenceId !== sequenceId),
+  };
+  if (next.currentSequenceId === sequenceId) next.currentSequenceId = undefined;
+  setState(next);
+}
+
+/* SUPPRIMER un projet (et tout ce qui va avec) */
+export function deleteProject(projectId: string) {
+  const s = getState();
+  const seqIds = s.sequences.filter(r => r.projectId === projectId).map(r => r.id);
+  const next = {
+    ...s,
+    projects: s.projects.filter(p => p.id !== projectId),
+    sequences: s.sequences.filter(r => r.projectId !== projectId),
+    phases: s.phases.filter(ph => !seqIds.includes(ph.sequenceId)),
+  };
+  if (next.currentProjectId === projectId) next.currentProjectId = undefined;
+  if (next.currentSequenceId && seqIds.includes(next.currentSequenceId)) next.currentSequenceId = undefined;
+  setState(next);
+}
+
+/* Phases utilitaires */
 export function listPhases(sequenceId: string): Phase[] {
   return getState().phases.filter(ph => ph.sequenceId === sequenceId).sort((a,b) => a.idx - b.idx);
 }
@@ -167,6 +193,11 @@ export type Phase1Spec = {
   horizon: number;
 
   sliderKeys: SliderKey[];
+
+  // bornes figées pour sliders (si utilisés)
+  sliderMaxInflow?: number;
+  sliderMaxOutflow?: number;
+  sliderMaxInitial?: number;
 
   derivedFlowUnit?: string;
   derivedStockUnit?: string;
