@@ -27,6 +27,9 @@ const DEFAULT_SPEC: Phase1Spec = {
   outflowValue: 8,
   horizon: 60,
   sliderKeys: [],
+  sliderMaxInflow: undefined,
+  sliderMaxOutflow: undefined,
+  sliderMaxInitial: undefined,
   derivedFlowUnit: "",
   derivedStockUnit: "",
 };
@@ -73,11 +76,26 @@ export default function Phase1() {
     updatePhase1Draft(next);
   };
 
+  const initBounds = (sp: Phase1Spec) => ({
+    inflow:  Math.max(10, (sp.inflowValue  || 0) * 2),
+    outflow: Math.max(10, (sp.outflowValue || 0) * 2),
+    initial: Math.max(10, (sp.initialStockValue || 0) * 2),
+  });
+
   const toggleSlider = (key: SliderKey) => {
     const set = new Set(spec.sliderKeys);
-    if (set.has(key)) set.delete(key);
-    else if (set.size < 2) set.add(key);
-    update({ sliderKeys: Array.from(set) as SliderKey[] });
+    const bounds = initBounds(spec);
+    const patch: Partial<Phase1Spec> = {};
+
+    if (set.has(key)) {
+      set.delete(key);
+    } else if (set.size < 2) {
+      set.add(key);
+      if (key === "inflow"  && !spec.sliderMaxInflow)  patch.sliderMaxInflow  = bounds.inflow;
+      if (key === "outflow" && !spec.sliderMaxOutflow) patch.sliderMaxOutflow = bounds.outflow;
+      if (key === "initial" && !spec.sliderMaxInitial) patch.sliderMaxInitial = bounds.initial;
+    }
+    update({ sliderKeys: Array.from(set) as SliderKey[], ...patch });
   };
 
   const canValidate = () =>
@@ -172,20 +190,42 @@ export default function Phase1() {
                 <Check label={spec.initialStockName || "Stock de départ"} checked={spec.sliderKeys.includes("initial")} onChange={() => toggleSlider("initial")} />
               </div>
 
+              {/* (facultatif) bornes éditables */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                {spec.sliderKeys.includes("inflow") && (
+                  <NumberField label="Max slider entrée" value={spec.sliderMaxInflow ?? 100}
+                    onChange={v => update({ sliderMaxInflow: Math.max(1, v) })} />
+                )}
+                {spec.sliderKeys.includes("outflow") && (
+                  <NumberField label="Max slider sortie" value={spec.sliderMaxOutflow ?? 100}
+                    onChange={v => update({ sliderMaxOutflow: Math.max(1, v) })} />
+                )}
+                {spec.sliderKeys.includes("initial") && (
+                  <NumberField label="Max slider stock départ" value={spec.sliderMaxInitial ?? 100}
+                    onChange={v => update({ sliderMaxInitial: Math.max(1, v) })} />
+                )}
+              </div>
+
               <div className="grid gap-3">
                 {spec.sliderKeys.includes("inflow") && (
                   <RangeField label={`Slider ${spec.inflowName || "Entrée"} (${spec.derivedFlowUnit || "—"})`}
-                    value={spec.inflowValue} min={0} max={bestMax(spec.inflowValue)} step={Math.max(1, Math.round(bestMax(spec.inflowValue) / 50))}
+                    value={spec.inflowValue} min={0}
+                    max={spec.sliderMaxInflow ?? 100}
+                    step={Math.max(1, Math.round((spec.sliderMaxInflow ?? 100) / 50))}
                     onChange={v => update({ inflowValue: v })} />
                 )}
                 {spec.sliderKeys.includes("outflow") && (
                   <RangeField label={`Slider ${spec.outflowName || "Sortie"} (${spec.derivedFlowUnit || "—"})`}
-                    value={spec.outflowValue} min={0} max={bestMax(spec.outflowValue)} step={Math.max(1, Math.round(bestMax(spec.outflowValue) / 50))}
+                    value={spec.outflowValue} min={0}
+                    max={spec.sliderMaxOutflow ?? 100}
+                    step={Math.max(1, Math.round((spec.sliderMaxOutflow ?? 100) / 50))}
                     onChange={v => update({ outflowValue: v })} />
                 )}
                 {spec.sliderKeys.includes("initial") && (
                   <RangeField label={`Slider ${spec.initialStockName || "Stock de départ"} (${spec.derivedStockUnit || "—"})`}
-                    value={spec.initialStockValue} min={0} max={bestMax(spec.initialStockValue)} step={Math.max(1, Math.round(bestMax(spec.initialStockValue) / 50))}
+                    value={spec.initialStockValue} min={0}
+                    max={spec.sliderMaxInitial ?? 100}
+                    step={Math.max(1, Math.round((spec.sliderMaxInitial ?? 100) / 50))}
                     onChange={v => update({ initialStockValue: v })} />
                 )}
               </div>
@@ -259,12 +299,6 @@ function RangeField({ label, value, onChange, min, max, step }: { label: string;
       <div className="flex justify-between text-xs opacity-60"><span>{min}</span><span>{max}</span></div>
     </label>
   );
-}
-function bestMax(v: number) {
-  const base = Math.max(1, Math.abs(v)) || 10;
-  const m = Math.pow(10, Math.floor(Math.log10(base)));
-  const k = Math.ceil(base / m);
-  return (k * m) * 2;
 }
 
 /* Mini graphe SVG */
