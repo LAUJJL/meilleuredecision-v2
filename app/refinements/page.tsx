@@ -31,7 +31,7 @@ export default function RefinementsPage() {
     return sequences.map(seq => {
       const phases = listPhases(seq.id);
       const p0 = phases.find(p => p.idx === 0);
-      const status = p0?.lockedAt ? "Phase 0 validée" : "Phase 0 (en cours)";
+      const status = p0?.lockedAt ? "Définition de la vision validée" : "Définition de la vision (en cours)";
       return { seq, status };
     });
   }, [sequences, tick]);
@@ -43,7 +43,7 @@ export default function RefinementsPage() {
   };
 
   const backToProjects = () => {
-    clearSelection();              // on efface les sélections courantes
+    clearSelection();
     window.location.href = "/projects";
   };
 
@@ -53,20 +53,20 @@ export default function RefinementsPage() {
     <main className="min-h-screen grid place-items-center p-6">
       <div className="w-full max-w-3xl space-y-8">
         <header className="space-y-1 text-center">
-          <h1 className="text-2xl font-semibold">Raffinements du problème</h1>
+          <h1 className="text-2xl font-semibold">Visions du problème</h1>
           <div className="text-sm opacity-70">Problème : {project.title}</div>
         </header>
 
-        {/* A) Raffinements existants (si présents) */}
+        {/* Visions existantes */}
         {previousSequences.length > 0 && (
           <section className="space-y-2">
-            <h2 className="text-lg font-medium">Ouvrir un raffinement existant</h2>
+            <h2 className="text-lg font-medium">Ouvrir une vision existante</h2>
             <ul className="list-disc pl-5 text-sm space-y-1">
               {previousSequences.map(({ seq, status }) => (
                 <li key={seq.id} className="flex items-center gap-2">
                   <span className="flex-1">{seq.title} • {status}</span>
                   <button className="underline text-sm" onClick={() => openPhase0(seq.id)}>
-                    Ouvrir en Phase 0
+                    Ouvrir la définition de la vision
                   </button>
                 </li>
               ))}
@@ -74,13 +74,13 @@ export default function RefinementsPage() {
           </section>
         )}
 
-        {/* B) Créer un nouveau raffinement */}
+        {/* Créer une nouvelle vision */}
         <section className="space-y-3">
-          <h2 className="text-lg font-medium">Créer un nouveau raffinement</h2>
+          <h2 className="text-lg font-medium">Créer une nouvelle vision</h2>
           <div className="grid gap-2">
             <input
               className="border rounded-lg p-2"
-              placeholder="Nom du raffinement (80 car. max)"
+              placeholder="Nom de la vision (80 car. max)"
               value={seqTitle}
               maxLength={80}
               onChange={e => setSeqTitle(e.target.value)}
@@ -100,7 +100,7 @@ export default function RefinementsPage() {
                 if (id) openPhase0(id);
               }}
             >
-              Créer une nouvelle séquence pour le nouveau raffinement créé
+              Créer une nouvelle vision (ouvre sa définition)
             </button>
           </div>
         </section>
