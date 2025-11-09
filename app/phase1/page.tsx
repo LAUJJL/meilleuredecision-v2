@@ -34,9 +34,8 @@ const DEFAULT_SPEC: Phase1Spec = {
   derivedStockUnit: "",
 };
 
-function lsKey(visionId: string) {
-  return `rps:phase1:ymax:${visionId}`;
-}
+const lsKeyMax = (visionId: string) => `rps:phase1:ymax:${visionId}`;
+const lsKeyMin = (visionId: string) => `rps:phase1:ymin:${visionId}`;
 
 export default function Phase1() {
   const s = getState();
@@ -52,11 +51,14 @@ export default function Phase1() {
 
   const [spec, setSpec] = useState<Phase1Spec>(DEFAULT_SPEC);
 
-  // — Borne Max Y demandée au visiteur (persistée par vision dans localStorage)
+  // — Bornes Y choisies par le visiteur (persistées par vision)
   const [yMax, setYMax] = useState<number | null>(null);
-  const [yMaxInput, setYMaxInput] = useState<string>("");
+  const [yMin, setYMin] = useState<number | null>(null);
+  const [yMaxInputTop, setYMaxInputTop] = useState<string>("");
+  const [yMinInputTop, setYMinInputTop] = useState<string>("");
+  const [yMaxInputChart, setYMaxInputChart] = useState<string>("");
+  const [yMinInputChart, setYMinInputChart] = useState<string>("");
 
-  // Charger le brouillon Phase1 + init yMax depuis localStorage (ou fallback 2×initial ou 100)
   useEffect(() => {
     if (p1?.draft && !p1.lockedAt) {
       try {
@@ -69,21 +71,50 @@ export default function Phase1() {
     }
   }, [p1?.draft, p1?.lockedAt]);
 
+  // Série (simulation)
+  const series = useMemo(() => {
+    const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
+    const arr: number[] = new Array(n + 1);
+    const init = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
+    const infl = Math.max(0, Number.isFinite(spec.inflowValue) ? spec.inflowValue : 0);
+    const out  = Math.max(0, Number.isFinite(spec.outflowValue) ? spec.outflowValue : 0);
+    arr[0] = init;
+    for (let t = 1; t <= n; t++) arr[t] = arr[t - 1] + (infl - out);
+    return arr;
+  }, [spec.initialStockValue, spec.inflowValue, spec.outflowValue, spec.horizon]);
+
+  // Par défaut (si rien saisi) : Max = max(100, 2×initial), Min = min(0, série min − petite marge)
+  const autoDefaults = useMemo(() => {
+    const init = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
+    const defMax = Math.max(100, init * 2);
+    const rawMin = Math.min(...(series.length ? series : [0]));
+    const pad = Math.max(1, Math.abs(defMax - rawMin) * 0.05);
+    const defMin = Math.min(0, rawMin - pad);
+    return { defMax, defMin };
+  }, [spec.initialStockValue, series]);
+
+  // Initialisation depuis localStorage (ou défauts)
   useEffect(() => {
     if (!vision) return;
-    // si localStorage a une valeur, on la prend ; sinon on calcule un défaut simple
-    const saved = typeof window !== "undefined" ? window.localStorage.getItem(lsKey(vision.id)) : null;
-    if (saved !== null) {
-      const v = Number(saved);
-      const safe = Number.isFinite(v) && v > 0 ? v : 100;
-      setYMax(safe);
-      setYMaxInput(String(safe));
-    } else {
-      const fallback = Math.max(100, (Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0) * 2);
-      setYMax(fallback);
-      setYMaxInput(String(fallback));
-    }
-  }, [vision?.id, spec.initialStockValue]);
+    const read = (k: string) => {
+      if (typeof window === "undefined") return null;
+      const v = window.localStorage.getItem(k);
+      if (v === null) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    const maxSaved = read(lsKeyMax(vision.id));
+    const minSaved = read(lsKeyMin(vision.id));
+    const max = maxSaved ?? autoDefaults.defMax;
+    const min = minSaved ?? autoDefaults.defMin;
+
+    setYMax(max);
+    setYMin(min);
+    setYMaxInputTop(String(max));
+    setYMinInputTop(String(min));
+    setYMaxInputChart(String(max));
+    setYMinInputChart(String(min));
+  }, [vision?.id, autoDefaults.defMax, autoDefaults.defMin]);
 
   if (!project || !vision || !p0 || !p1) return null;
   const locked = !!p1.lockedAt;
@@ -135,30 +166,37 @@ export default function Phase1() {
     window.location.href = "/projects";
   };
 
-  // Série (simulation)
-  const series = useMemo(() => {
-    const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
-    const arr: number[] = new Array(n + 1);
-    const init = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
-    const infl = Math.max(0, Number.isFinite(spec.inflowValue) ? spec.inflowValue : 0);
-    const out  = Math.max(0, Number.isFinite(spec.outflowValue) ? spec.outflowValue : 0);
-    arr[0] = init;
-    for (let t = 1; t <= n; t++) arr[t] = arr[t - 1] + (infl - out);
-    return arr;
-  }, [spec.initialStockValue, spec.inflowValue, spec.outflowValue, spec.horizon]);
-
-  const applyYMaxFromTop = () => {
-    const v = Number(String(yMaxInput).replace(",", "."));
-    if (!Number.isFinite(v) || v <= 0) return;
-    setYMax(v);
-    if (typeof window !== "undefined") window.localStorage.setItem(lsKey(vision.id), String(v));
+  // Appliquer (haut) et (graphe)
+  const persistBounds = (minVal: number, maxVal: number) => {
+    if (!vision) return;
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(lsKeyMax(vision.id), String(maxVal));
+      window.localStorage.setItem(lsKeyMin(vision.id), String(minVal));
+    }
+  };
+  const normalizePair = (minVal: number, maxVal: number) => {
+    if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return null;
+    if (maxVal <= minVal) return { min: minVal, max: minVal + 1 }; // éviter min==max
+    return { min: minVal, max: maxVal };
   };
 
-  const applyYMaxFromChart = () => {
-    const v = Number(String(yMaxInput).replace(",", "."));
-    if (!Number.isFinite(v) || v <= 0) return;
-    setYMax(v);
-    if (typeof window !== "undefined") window.localStorage.setItem(lsKey(vision.id), String(v));
+  const applyTop = () => {
+    const maxP = Number(String(yMaxInputTop).replace(",", "."));
+    const minP = Number(String(yMinInputTop).replace(",", "."));
+    const pair = normalizePair(minP, maxP);
+    if (!pair) return;
+    setYMax(pair.max); setYMin(pair.min);
+    setYMaxInputChart(String(pair.max)); setYMinInputChart(String(pair.min));
+    persistBounds(pair.min, pair.max);
+  };
+  const applyChart = () => {
+    const maxP = Number(String(yMaxInputChart).replace(",", "."));
+    const minP = Number(String(yMinInputChart).replace(",", "."));
+    const pair = normalizePair(minP, maxP);
+    if (!pair) return;
+    setYMax(pair.max); setYMin(pair.min);
+    setYMaxInputTop(String(pair.max)); setYMinInputTop(String(pair.min));
+    persistBounds(pair.min, pair.max);
   };
 
   return (
@@ -182,19 +220,19 @@ export default function Phase1() {
           <LockedView content={p1.content} />
         ) : (
           <div className="space-y-6">
-            {/* 1) Paramètres textuels + Max Y demandé ici */}
+            {/* 1) Paramètres + bornes Y (haut de page) */}
             <section className="space-y-3">
               <h2 className="text-lg font-medium">Paramètres textuels</h2>
               <div className="grid gap-3">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <TextField label="Nom du stock" ph="Ex. Trésorerie" value={spec.stockName} onChange={v => update({ stockName: v })} />
-                  {/* Borne Max Y demandée ici */}
-                  <NumberInline
-                    label={`Borne max du graphe (Max Y) ${spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}`}
-                    value={yMaxInput}
-                    onChange={setYMaxInput}
-                    onApply={applyYMaxFromTop}
-                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <NumberInline label={`Min Y ${spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}`} value={yMinInputTop} onChange={setYMinInputTop} />
+                    <NumberInline label={`Max Y ${spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}`} value={yMaxInputTop} onChange={setYMaxInputTop} />
+                    <div className="col-span-2">
+                      <button className="px-2 py-1 border rounded text-sm" onClick={applyTop}>Appliquer ces bornes</button>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -274,24 +312,20 @@ export default function Phase1() {
               </div>
             </section>
 
-            {/* 4) Graphique + rappel/édition Max Y */}
+            {/* 4) Graphique + bornes rappelées/éditables */}
             <section className="space-y-3">
-              <div className="flex flex-wrap items-center gap-2 text-sm">
+              <div className="flex flex-wrap items-center gap-3 text-sm">
                 <label className="inline-flex items-center gap-2">
-                  <span className="opacity-70">
-                    Max Y {spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}
-                  </span>
-                  <input
-                    className="w-28 border rounded p-1"
-                    type="number"
-                    step="any"
-                    value={yMaxInput}
-                    onChange={e => setYMaxInput(e.target.value)}
-                  />
+                  <span className="opacity-70">Min Y {spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}</span>
+                  <input className="w-28 border rounded p-1" type="number" step="any" value={yMinInputChart} onChange={e => setYMinInputChart(e.target.value)} />
                 </label>
-                <button className="px-2 py-1 border rounded" onClick={applyYMaxFromChart}>Appliquer</button>
-                {yMax !== null && (
-                  <span className="opacity-60 text-xs">[actuel : {Math.round(yMax * 100) / 100}]</span>
+                <label className="inline-flex items-center gap-2">
+                  <span className="opacity-70">Max Y {spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}</span>
+                  <input className="w-28 border rounded p-1" type="number" step="any" value={yMaxInputChart} onChange={e => setYMaxInputChart(e.target.value)} />
+                </label>
+                <button className="px-2 py-1 border rounded" onClick={applyChart}>Appliquer</button>
+                {(yMin !== null && yMax !== null) && (
+                  <span className="opacity-60 text-xs">[actuel : {Math.round(yMin * 100) / 100} → {Math.round(yMax * 100) / 100}]</span>
                 )}
               </div>
 
@@ -300,7 +334,8 @@ export default function Phase1() {
                 series={series}
                 unitY={spec.derivedStockUnit || ""}
                 unitX={spec.timeUnit}
-                yMax={yMax ?? 100}
+                yMin={(yMin ?? autoDefaults.defMin)}
+                yMax={(yMax ?? autoDefaults.defMax)}
               />
             </section>
 
@@ -329,14 +364,11 @@ function TextField({ label, ph, value, onChange }: { label: string; ph?: string;
     </label>
   );
 }
-function NumberInline({ label, value, onChange, onApply }: { label: string; value: string; onChange: (v: string) => void; onApply: () => void; }) {
+function NumberInline({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void; }) {
   return (
     <label className="block">
       <span className="text-sm">{label}</span>
-      <div className="mt-1 flex items-center gap-2">
-        <input className="w-40 border rounded-lg p-2" value={value} onChange={e => onChange(e.target.value)} />
-        <button className="px-2 py-1 border rounded" onClick={onApply}>Appliquer</button>
-      </div>
+      <input className="mt-1 w-full border rounded-lg p-2" value={value} onChange={e => onChange(e.target.value)} />
     </label>
   );
 }
@@ -379,27 +411,26 @@ function RangeField({ label, value, onChange, min, max, step }: { label: string;
   );
 }
 
-/* — Mini graphe : Min auto, Max choisi par le visiteur — */
+/* — Mini graphe : bornes Y fixées par l’utilisateur (négatif autorisé) — */
 function MiniChart({
   series,
   unitY,
   unitX,
+  yMin,
   yMax,
 }: {
   series: number[];
   unitY: string;
   unitX: string;
-  yMax: number; // borne haute imposée par le visiteur
+  yMin: number;
+  yMax: number;
 }) {
   const W = 640, H = 260, PAD = 40;
   const safe = (series && series.length >= 2) ? series : [0, 0];
 
-  // Min auto simple (avec petit coussin)
-  let minY = Math.min(...safe);
+  let minY = yMin;
   let maxY = yMax;
-  if (minY === maxY) { minY -= 1; maxY += 1; }
-  const padBottom = Math.max(1, (maxY - minY) * 0.05);
-  minY = minY - padBottom;
+  if (maxY <= minY) { maxY = minY + 1; } // garde-fou
 
   const toX = (i: number) => PAD + (i * (W - 2 * PAD)) / (safe.length - 1 || 1);
   const toY = (v: number) => H - PAD - ((v - minY) * (H - 2 * PAD)) / (maxY - minY || 1);
@@ -430,8 +461,6 @@ function MiniChart({
 function LockedView({ content }: { content?: string; }) {
   let spec: Phase1Spec = DEFAULT_SPEC;
   try { if (content) spec = { ...DEFAULT_SPEC, ...(JSON.parse(content) as Phase1Spec) }; } catch {}
-  // En lecture seule, on n’édite pas la borne Max ; on affiche avec défaut 2×initial (ou 100)
-  const defaultMax = Math.max(100, (Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0) * 2);
   const series = (() => {
     const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
     const arr: number[] = new Array(n + 1);
@@ -441,6 +470,13 @@ function LockedView({ content }: { content?: string; }) {
     for (let t = 1; t <= n; t++) arr[t] = arr[t-1] + (infl - out);
     return arr;
   })();
+
+  // Lecture seule : bornes simples par défaut
+  const init = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
+  const defMax = Math.max(100, init * 2);
+  const rawMin = Math.min(...(series.length ? series : [0]));
+  const pad = Math.max(1, Math.abs(defMax - rawMin) * 0.05);
+  const defMin = Math.min(0, rawMin - pad);
 
   return (
     <div className="space-y-4">
@@ -457,7 +493,7 @@ function LockedView({ content }: { content?: string; }) {
           <li><strong>Sliders</strong> : {spec.sliderKeys.join(", ") || "aucun"}</li>
         </ul>
       </div>
-      <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} yMax={defaultMax} />
+      <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} yMin={defMin} yMax={defMax} />
     </div>
   );
 }
