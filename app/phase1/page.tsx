@@ -117,7 +117,7 @@ export default function Phase1() {
     window.location.href = "/projects";
   };
 
-  // Simulation sûre — recalculée à chaque changement => courbe live
+  // Simulation recalculée à chaque changement => courbe live
   const series = useMemo(() => {
     const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
     const arr: number[] = new Array(n + 1);
@@ -128,19 +128,6 @@ export default function Phase1() {
     for (let t = 1; t <= n; t++) arr[t] = arr[t - 1] + (infl - out);
     return arr;
   }, [spec.initialStockValue, spec.inflowValue, spec.outflowValue, spec.horizon]);
-
-  // On génère la path ici (dépend de series) pour forcer le redraw
-  const pathD = useMemo(() => {
-    const W = 640, H = 260, PAD = 40;
-    const safe = (series && series.length >= 2) ? series : [0, 0];
-    const minY = Math.min(...safe);
-    const maxY = Math.max(...safe);
-    const y0 = minY === maxY ? minY - 1 : minY;
-    const y1 = minY === maxY ? maxY + 1 : maxY;
-    const toX = (i: number) => PAD + (i * (W - 2 * PAD)) / (safe.length - 1 || 1);
-    const toY = (v: number) => H - PAD - ((v - y0) * (H - 2 * PAD)) / (y1 - y0 || 1);
-    return safe.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i)},${toY(v)}`).join(" ");
-  }, [series]);
 
   return (
     <main className="min-h-screen grid place-items-center p-6">
@@ -244,10 +231,10 @@ export default function Phase1() {
               </div>
             </section>
 
-            {/* 4) Graphique — pathD recalculée à chaque changement */}
+            {/* 4) Graphique */}
             <section className="space-y-2">
               <h2 className="text-lg font-medium">Graphique du {spec.stockName || "stock"}</h2>
-              <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} pathD={pathD} />
+              <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} />
             </section>
 
             <div className="flex gap-3">
@@ -314,19 +301,21 @@ function RangeField({ label, value, onChange, min, max, step }: { label: string;
   );
 }
 
-/* Mini graphe SVG — pathD injectée depuis useMemo pour forcer le redraw */
-function MiniChart({ series, unitY, unitX, pathD }: { series: number[]; unitY: string; unitX: string; pathD: string; }) {
+/* Mini graphe SVG : recalcule le path à chaque render en fonction de `series` */
+function MiniChart({ series, unitY, unitX }: { series: number[]; unitY: string; unitX: string; }) {
   const W = 640, H = 260, PAD = 40;
-
-  // Recalcule aussi la grille à chaque changement de series
   const safe = (series && series.length >= 2) ? series : [0, 0];
   const minY = Math.min(...safe);
   const maxY = Math.max(...safe);
   const y0 = minY === maxY ? minY - 1 : minY;
   const y1 = minY === maxY ? maxY + 1 : maxY;
 
+  const toX = (i: number) => PAD + (i * (W - 2 * PAD)) / (safe.length - 1 || 1);
   const toY = (v: number) => H - PAD - ((v - y0) * (H - 2 * PAD)) / (y1 - y0 || 1);
+  const d = safe.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i)},${toY(v)}`).join(" ");
+
   const yMid = (y0 + y1) / 2;
+  const pathKey = `${safe[0]}-${safe[safe.length - 1]}-${safe.length}`;
 
   return (
     <svg width={W} height={H} className="border rounded-lg bg-white">
@@ -340,8 +329,8 @@ function MiniChart({ series, unitY, unitX, pathD }: { series: number[]; unitY: s
         </g>
       ))}
 
-      {/* Courbe mise à jour dynamiquement */}
-      <path d={pathD} fill="none" stroke="#222" strokeWidth={2} />
+      {/* Forcer le redraw si besoin */}
+      <path key={pathKey} d={d} fill="none" stroke="#222" strokeWidth={2} />
 
       <text x={W/2} y={H-8} fontSize="11" fill="#666" textAnchor="middle">{unitX}</text>
       <text x={12} y={14} fontSize="11" fill="#666">{unitY}</text>
@@ -387,19 +376,5 @@ function ReadOnlyChart({ spec }: { spec: Phase1Spec }) {
     for (let t = 1; t <= n; t++) arr[t] = arr[t-1] + (infl - out);
     return arr;
   }, [spec]);
-
-  // path pour lecture seule
-  const pathD = useMemo(() => {
-    const W = 640, H = 260, PAD = 40;
-    const safe = (series && series.length >= 2) ? series : [0, 0];
-    const minY = Math.min(...safe);
-    const maxY = Math.max(...safe);
-    const y0 = minY === maxY ? minY - 1 : minY;
-    const y1 = minY === maxY ? maxY + 1 : maxY;
-    const toX = (i: number) => PAD + (i * (W - 2 * PAD)) / (safe.length - 1 || 1);
-    const toY = (v: number) => H - PAD - ((v - y0) * (H - 2 * PAD)) / (y1 - y0 || 1);
-    return safe.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i)},${toY(v)}`).join(" ");
-  }, [series]);
-
-  return <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} pathD={pathD} />;
+  return <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} />;
 }
