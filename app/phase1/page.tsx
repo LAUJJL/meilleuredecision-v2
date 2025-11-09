@@ -34,15 +34,16 @@ const DEFAULT_SPEC: Phase1Spec = {
   derivedStockUnit: "",
 };
 
+function lsKey(visionId: string) {
+  return `rps:phase1:ymax:${visionId}`;
+}
+
 export default function Phase1() {
   const s = getState();
   const project = s.projects.find(p => p.id === s.currentProjectId);
   const vision  = s.sequences.find(r => r.id === s.currentSequenceId);
 
-  useEffect(() => {
-    if (!project || !vision) window.location.href = "/projects";
-  }, [project, vision]);
-
+  useEffect(() => { if (!project || !vision) window.location.href = "/projects"; }, [project, vision]);
   useEffect(() => { if (vision) ensurePhase1(vision.id); }, [vision]);
 
   const phases = useMemo(() => (vision ? listPhases(vision.id) : []), [vision]);
@@ -51,25 +52,40 @@ export default function Phase1() {
 
   const [spec, setSpec] = useState<Phase1Spec>(DEFAULT_SPEC);
 
-  // ⚙️ Échelle Y (minimaliste) : lock + yLock (min/max). Seuls les boutons Max − / + sont visibles.
-  const [lockScale, setLockScale] = useState(false);
-  const [yLock, setYLock] = useState<{ min: number; max: number } | null>(null);
+  // — Borne Max Y demandée au visiteur (persistée par vision dans localStorage)
+  const [yMax, setYMax] = useState<number | null>(null);
+  const [yMaxInput, setYMaxInput] = useState<string>("");
 
+  // Charger le brouillon Phase1 + init yMax depuis localStorage (ou fallback 2×initial ou 100)
   useEffect(() => {
     if (p1?.draft && !p1.lockedAt) {
       try {
         const parsed = JSON.parse(p1.draft) as Phase1Spec;
-        setSpec({ ...DEFAULT_SPEC, ...parsed });
-      } catch {
-        setSpec(DEFAULT_SPEC);
-      }
+        const merged = { ...DEFAULT_SPEC, ...parsed };
+        setSpec(merged);
+      } catch { setSpec(DEFAULT_SPEC); }
     } else {
       setSpec(DEFAULT_SPEC);
     }
   }, [p1?.draft, p1?.lockedAt]);
 
-  if (!project || !vision || !p0 || !p1) return null;
+  useEffect(() => {
+    if (!vision) return;
+    // si localStorage a une valeur, on la prend ; sinon on calcule un défaut simple
+    const saved = typeof window !== "undefined" ? window.localStorage.getItem(lsKey(vision.id)) : null;
+    if (saved !== null) {
+      const v = Number(saved);
+      const safe = Number.isFinite(v) && v > 0 ? v : 100;
+      setYMax(safe);
+      setYMaxInput(String(safe));
+    } else {
+      const fallback = Math.max(100, (Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0) * 2);
+      setYMax(fallback);
+      setYMaxInput(String(fallback));
+    }
+  }, [vision?.id, spec.initialStockValue]);
 
+  if (!project || !vision || !p0 || !p1) return null;
   const locked = !!p1.lockedAt;
 
   const update = (patch: Partial<Phase1Spec>) => {
@@ -90,10 +106,8 @@ export default function Phase1() {
     const set = new Set(spec.sliderKeys);
     const bounds = initBounds(spec);
     const patch: Partial<Phase1Spec> = {};
-
-    if (set.has(key)) {
-      set.delete(key);
-    } else if (set.size < 2) {
+    if (set.has(key)) set.delete(key);
+    else if (set.size < 2) {
       set.add(key);
       if (key === "inflow"  && !spec.sliderMaxInflow)  patch.sliderMaxInflow  = bounds.inflow;
       if (key === "outflow" && !spec.sliderMaxOutflow) patch.sliderMaxOutflow = bounds.outflow;
@@ -121,7 +135,7 @@ export default function Phase1() {
     window.location.href = "/projects";
   };
 
-  // Simulation recalculée à chaque changement => série pour le graphe
+  // Série (simulation)
   const series = useMemo(() => {
     const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
     const arr: number[] = new Array(n + 1);
@@ -133,49 +147,18 @@ export default function Phase1() {
     return arr;
   }, [spec.initialStockValue, spec.inflowValue, spec.outflowValue, spec.horizon]);
 
-  // Bornes auto courantes (avec un léger padding)
-  const autoBounds = useMemo(() => {
-    const safe = (series && series.length >= 2) ? series : [0, 0];
-    const minY = Math.min(...safe);
-    const maxY = Math.max(...safe);
-    const pad = Math.max(1, (maxY - minY) * 0.05);
-    return { min: minY - pad, max: maxY + pad, rawMin: minY, rawMax: maxY };
-  }, [series]);
-
-  // Auto-élargissement du Max si la courbe dépasse (quand l’échelle est fixée)
-  useEffect(() => {
-    if (!lockScale || !yLock) return;
-    if (autoBounds.rawMax > yLock.max) {
-      const span = yLock.max - yLock.min || 1;
-      setYLock({ ...yLock, max: Math.max(autoBounds.rawMax * 1.1, yLock.max + span * 0.2) });
-    }
-  }, [autoBounds.rawMax, lockScale, yLock]);
-
-  const onFixScale = () => {
-    setYLock({ min: autoBounds.min, max: autoBounds.max });
-    setLockScale(true);
-  };
-  const onResetScale = () => {
-    setLockScale(false);
-    setYLock(null);
+  const applyYMaxFromTop = () => {
+    const v = Number(String(yMaxInput).replace(",", "."));
+    if (!Number.isFinite(v) || v <= 0) return;
+    setYMax(v);
+    if (typeof window !== "undefined") window.localStorage.setItem(lsKey(vision.id), String(v));
   };
 
-  // Pas (10% du span courant, min 1)
-  const stepSpan = useMemo(() => {
-    const span = (yLock ? yLock.max - yLock.min : autoBounds.max - autoBounds.min) || 1;
-    return Math.max(1, Math.abs(span) * 0.1);
-  }, [yLock, autoBounds.max, autoBounds.min]);
-
-  // Boutons Max − / +
-  const bumpMax = (dir: 1 | -1) => {
-    if (!yLock) return;
-    if (dir < 0) {
-      // Ne pas descendre sous la courbe actuelle (+ petite marge)
-      const newMax = Math.max(yLock.max - stepSpan, autoBounds.rawMax + Math.max(0.1, stepSpan * 0.02));
-      setYLock({ ...yLock, max: newMax });
-    } else {
-      setYLock({ ...yLock, max: yLock.max + stepSpan });
-    }
+  const applyYMaxFromChart = () => {
+    const v = Number(String(yMaxInput).replace(",", "."));
+    if (!Number.isFinite(v) || v <= 0) return;
+    setYMax(v);
+    if (typeof window !== "undefined") window.localStorage.setItem(lsKey(vision.id), String(v));
   };
 
   return (
@@ -199,19 +182,31 @@ export default function Phase1() {
           <LockedView content={p1.content} />
         ) : (
           <div className="space-y-6">
-            {/* 1) Noms + unités */}
+            {/* 1) Paramètres textuels + Max Y demandé ici */}
             <section className="space-y-3">
               <h2 className="text-lg font-medium">Paramètres textuels</h2>
               <div className="grid gap-3">
-                <TextField label="Nom du stock" ph="Ex. Trésorerie" value={spec.stockName} onChange={v => update({ stockName: v })} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <TextField label="Nom du stock" ph="Ex. Trésorerie" value={spec.stockName} onChange={v => update({ stockName: v })} />
+                  {/* Borne Max Y demandée ici */}
+                  <NumberInline
+                    label={`Borne max du graphe (Max Y) ${spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}`}
+                    value={yMaxInput}
+                    onChange={setYMaxInput}
+                    onApply={applyYMaxFromTop}
+                  />
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <TextField label="Unité du stock" ph="Ex. euros, habitants" value={spec.stockUnit} onChange={v => update({ stockUnit: v })} />
                   <SelectField label="Unité de temps (pas du modèle)" value={spec.timeUnit} onChange={v => update({ timeUnit: v as any })} options={TIME_UNITS as unknown as string[]} />
                 </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <TextField label="Nom du flux d’entrée" ph="Ex. Recettes" value={spec.inflowName} onChange={v => update({ inflowName: v })} />
                   <TextField label="Nom du flux de sortie" ph="Ex. Dépenses" value={spec.outflowName} onChange={v => update({ outflowName: v })} />
                 </div>
+
                 <TextField label="Nom du stock de départ" ph="Ex. Trésorerie initiale" value={spec.initialStockName} onChange={v => update({ initialStockName: v })} />
               </div>
             </section>
@@ -230,7 +225,7 @@ export default function Phase1() {
               </div>
             </section>
 
-            {/* 3) Sliders (max 2) */}
+            {/* 3) Sliders (optionnels, max 2) */}
             <section className="space-y-2">
               <h2 className="text-lg font-medium">Sliders (optionnels, max 2)</h2>
               <div className="flex flex-wrap gap-3 text-sm">
@@ -239,7 +234,6 @@ export default function Phase1() {
                 <Check label={spec.initialStockName || "Stock de départ"} checked={spec.sliderKeys.includes("initial")} onChange={() => toggleSlider("initial")} />
               </div>
 
-              {/* bornes sliders éditables (facultatif) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 {spec.sliderKeys.includes("inflow") && (
                   <NumberField label="Max slider entrée" value={spec.sliderMaxInflow ?? 100}
@@ -280,33 +274,24 @@ export default function Phase1() {
               </div>
             </section>
 
-            {/* 4) Graphique + contrôle d’échelle minimaliste */}
+            {/* 4) Graphique + rappel/édition Max Y */}
             <section className="space-y-3">
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="inline-flex items-center gap-2 text-sm">
-                  <input type="checkbox" checked={lockScale} onChange={() => setLockScale(v => !v)} />
-                  Échelle Y fixe
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <label className="inline-flex items-center gap-2">
+                  <span className="opacity-70">
+                    Max Y {spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}
+                  </span>
+                  <input
+                    className="w-28 border rounded p-1"
+                    type="number"
+                    step="any"
+                    value={yMaxInput}
+                    onChange={e => setYMaxInput(e.target.value)}
+                  />
                 </label>
-                {!lockScale ? (
-                  <button className="px-2 py-1 border rounded text-sm" onClick={onFixScale}>
-                    Fixer maintenant
-                  </button>
-                ) : (
-                  <>
-                    <button className="px-2 py-1 border rounded text-sm" onClick={onResetScale}>
-                      Réinitialiser
-                    </button>
-                    {yLock && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="opacity-70">Max</span>
-                        <button className="px-2 py-1 border rounded" onClick={() => bumpMax(-1)}>−</button>
-                        <button className="px-2 py-1 border rounded" onClick={() => bumpMax(+1)}>+</button>
-                        <span className="text-xs opacity-60 ml-2">
-                          [{Math.round(yLock.min*100)/100} → {Math.round(yLock.max*100)/100}]
-                        </span>
-                      </div>
-                    )}
-                  </>
+                <button className="px-2 py-1 border rounded" onClick={applyYMaxFromChart}>Appliquer</button>
+                {yMax !== null && (
+                  <span className="opacity-60 text-xs">[actuel : {Math.round(yMax * 100) / 100}]</span>
                 )}
               </div>
 
@@ -315,8 +300,7 @@ export default function Phase1() {
                 series={series}
                 unitY={spec.derivedStockUnit || ""}
                 unitX={spec.timeUnit}
-                lockScale={lockScale}
-                yLock={yLock}
+                yMax={yMax ?? 100}
               />
             </section>
 
@@ -342,6 +326,17 @@ function TextField({ label, ph, value, onChange }: { label: string; ph?: string;
     <label className="block">
       <span className="text-sm">{label}</span>
       <input className="mt-1 w-full border rounded-lg p-2" placeholder={ph} value={value} onChange={e => onChange(e.target.value)} />
+    </label>
+  );
+}
+function NumberInline({ label, value, onChange, onApply }: { label: string; value: string; onChange: (v: string) => void; onApply: () => void; }) {
+  return (
+    <label className="block">
+      <span className="text-sm">{label}</span>
+      <div className="mt-1 flex items-center gap-2">
+        <input className="w-40 border rounded-lg p-2" value={value} onChange={e => onChange(e.target.value)} />
+        <button className="px-2 py-1 border rounded" onClick={onApply}>Appliquer</button>
+      </div>
     </label>
   );
 }
@@ -384,32 +379,27 @@ function RangeField({ label, value, onChange, min, max, step }: { label: string;
   );
 }
 
-/* Mini graphe SVG (auto / lock avec Max ajustable) */
+/* — Mini graphe : Min auto, Max choisi par le visiteur — */
 function MiniChart({
   series,
   unitY,
   unitX,
-  lockScale,
-  yLock,
+  yMax,
 }: {
   series: number[];
   unitY: string;
   unitX: string;
-  lockScale: boolean;
-  yLock: { min: number; max: number } | null;
+  yMax: number; // borne haute imposée par le visiteur
 }) {
   const W = 640, H = 260, PAD = 40;
   const safe = (series && series.length >= 2) ? series : [0, 0];
 
+  // Min auto simple (avec petit coussin)
   let minY = Math.min(...safe);
-  let maxY = Math.max(...safe);
+  let maxY = yMax;
   if (minY === maxY) { minY -= 1; maxY += 1; }
-
-  if (lockScale && yLock) {
-    minY = yLock.min;
-    maxY = yLock.max;
-    if (minY === maxY) { minY -= 1; maxY += 1; }
-  }
+  const padBottom = Math.max(1, (maxY - minY) * 0.05);
+  minY = minY - padBottom;
 
   const toX = (i: number) => PAD + (i * (W - 2 * PAD)) / (safe.length - 1 || 1);
   const toY = (v: number) => H - PAD - ((v - minY) * (H - 2 * PAD)) / (maxY - minY || 1);
@@ -440,6 +430,18 @@ function MiniChart({
 function LockedView({ content }: { content?: string; }) {
   let spec: Phase1Spec = DEFAULT_SPEC;
   try { if (content) spec = { ...DEFAULT_SPEC, ...(JSON.parse(content) as Phase1Spec) }; } catch {}
+  // En lecture seule, on n’édite pas la borne Max ; on affiche avec défaut 2×initial (ou 100)
+  const defaultMax = Math.max(100, (Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0) * 2);
+  const series = (() => {
+    const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
+    const arr: number[] = new Array(n + 1);
+    arr[0] = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
+    const infl = Math.max(0, Number.isFinite(spec.inflowValue) ? spec.inflowValue : 0);
+    const out  = Math.max(0, Number.isFinite(spec.outflowValue) ? spec.outflowValue : 0);
+    for (let t = 1; t <= n; t++) arr[t] = arr[t-1] + (infl - out);
+    return arr;
+  })();
+
   return (
     <div className="space-y-4">
       <div className="text-sm opacity-70">Cette phase est validée (lecture seule).</div>
@@ -455,20 +457,7 @@ function LockedView({ content }: { content?: string; }) {
           <li><strong>Sliders</strong> : {spec.sliderKeys.join(", ") || "aucun"}</li>
         </ul>
       </div>
-      {/* Graphe lecture seule (auto-scale) */}
-      <ReadOnlyChart spec={spec} />
+      <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} yMax={defaultMax} />
     </div>
   );
-}
-function ReadOnlyChart({ spec }: { spec: Phase1Spec }) {
-  const series = useMemo(() => {
-    const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
-    const arr: number[] = new Array(n + 1);
-    arr[0] = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
-    const infl = Math.max(0, Number.isFinite(spec.inflowValue) ? spec.inflowValue : 0);
-    const out  = Math.max(0, Number.isFinite(spec.outflowValue) ? spec.outflowValue : 0);
-    for (let t = 1; t <= n; t++) arr[t] = arr[t-1] + (infl - out);
-    return arr;
-  }, [spec]);
-  return <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} lockScale={false} yLock={null} />;
 }
