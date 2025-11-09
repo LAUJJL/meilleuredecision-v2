@@ -51,7 +51,7 @@ export default function Phase1() {
 
   const [spec, setSpec] = useState<Phase1Spec>(DEFAULT_SPEC);
 
-  // ⚙️ contrôle échelle Y
+  // ⚙️ Échelle Y (minimaliste) : lock + yLock (min/max). Seuls les boutons Max − / + sont visibles.
   const [lockScale, setLockScale] = useState(false);
   const [yLock, setYLock] = useState<{ min: number; max: number } | null>(null);
 
@@ -133,23 +133,49 @@ export default function Phase1() {
     return arr;
   }, [spec.initialStockValue, spec.inflowValue, spec.outflowValue, spec.horizon]);
 
-  // Bornes auto courantes (utiles pour "Fixer maintenant")
+  // Bornes auto courantes (avec un léger padding)
   const autoBounds = useMemo(() => {
     const safe = (series && series.length >= 2) ? series : [0, 0];
     const minY = Math.min(...safe);
     const maxY = Math.max(...safe);
-    // petit coussin
     const pad = Math.max(1, (maxY - minY) * 0.05);
-    return { min: minY - pad, max: maxY + pad };
+    return { min: minY - pad, max: maxY + pad, rawMin: minY, rawMax: maxY };
   }, [series]);
 
+  // Auto-élargissement du Max si la courbe dépasse (quand l’échelle est fixée)
+  useEffect(() => {
+    if (!lockScale || !yLock) return;
+    if (autoBounds.rawMax > yLock.max) {
+      const span = yLock.max - yLock.min || 1;
+      setYLock({ ...yLock, max: Math.max(autoBounds.rawMax * 1.1, yLock.max + span * 0.2) });
+    }
+  }, [autoBounds.rawMax, lockScale, yLock]);
+
   const onFixScale = () => {
-    setYLock({ ...autoBounds });
+    setYLock({ min: autoBounds.min, max: autoBounds.max });
     setLockScale(true);
   };
   const onResetScale = () => {
     setLockScale(false);
     setYLock(null);
+  };
+
+  // Pas (10% du span courant, min 1)
+  const stepSpan = useMemo(() => {
+    const span = (yLock ? yLock.max - yLock.min : autoBounds.max - autoBounds.min) || 1;
+    return Math.max(1, Math.abs(span) * 0.1);
+  }, [yLock, autoBounds.max, autoBounds.min]);
+
+  // Boutons Max − / +
+  const bumpMax = (dir: 1 | -1) => {
+    if (!yLock) return;
+    if (dir < 0) {
+      // Ne pas descendre sous la courbe actuelle (+ petite marge)
+      const newMax = Math.max(yLock.max - stepSpan, autoBounds.rawMax + Math.max(0.1, stepSpan * 0.02));
+      setYLock({ ...yLock, max: newMax });
+    } else {
+      setYLock({ ...yLock, max: yLock.max + stepSpan });
+    }
   };
 
   return (
@@ -170,7 +196,7 @@ export default function Phase1() {
         </div>
 
         {locked ? (
-          <LockedView content={p1.content} onBack={backToProjects} />
+          <LockedView content={p1.content} />
         ) : (
           <div className="space-y-6">
             {/* 1) Noms + unités */}
@@ -213,7 +239,7 @@ export default function Phase1() {
                 <Check label={spec.initialStockName || "Stock de départ"} checked={spec.sliderKeys.includes("initial")} onChange={() => toggleSlider("initial")} />
               </div>
 
-              {/* bornes éditables (facultatif) */}
+              {/* bornes sliders éditables (facultatif) */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 {spec.sliderKeys.includes("inflow") && (
                   <NumberField label="Max slider entrée" value={spec.sliderMaxInflow ?? 100}
@@ -254,9 +280,9 @@ export default function Phase1() {
               </div>
             </section>
 
-            {/* 4) Graphique + contrôle échelle */}
+            {/* 4) Graphique + contrôle d’échelle minimaliste */}
             <section className="space-y-3">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <label className="inline-flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={lockScale} onChange={() => setLockScale(v => !v)} />
                   Échelle Y fixe
@@ -266,12 +292,21 @@ export default function Phase1() {
                     Fixer maintenant
                   </button>
                 ) : (
-                  <button className="px-2 py-1 border rounded text-sm" onClick={onResetScale}>
-                    Réinitialiser
-                  </button>
-                )}
-                {lockScale && yLock && (
-                  <span className="text-xs opacity-70">[Y: {Math.round(yLock.min*100)/100} → {Math.round(yLock.max*100)/100}]</span>
+                  <>
+                    <button className="px-2 py-1 border rounded text-sm" onClick={onResetScale}>
+                      Réinitialiser
+                    </button>
+                    {yLock && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="opacity-70">Max</span>
+                        <button className="px-2 py-1 border rounded" onClick={() => bumpMax(-1)}>−</button>
+                        <button className="px-2 py-1 border rounded" onClick={() => bumpMax(+1)}>+</button>
+                        <span className="text-xs opacity-60 ml-2">
+                          [{Math.round(yLock.min*100)/100} → {Math.round(yLock.max*100)/100}]
+                        </span>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -349,7 +384,7 @@ function RangeField({ label, value, onChange, min, max, step }: { label: string;
   );
 }
 
-/* Mini graphe SVG — avec échelle auto OU échelle verrouillée */
+/* Mini graphe SVG (auto / lock avec Max ajustable) */
 function MiniChart({
   series,
   unitY,
@@ -366,12 +401,10 @@ function MiniChart({
   const W = 640, H = 260, PAD = 40;
   const safe = (series && series.length >= 2) ? series : [0, 0];
 
-  // bornes automatiques
   let minY = Math.min(...safe);
   let maxY = Math.max(...safe);
   if (minY === maxY) { minY -= 1; maxY += 1; }
 
-  // si échelle verrouillée, on utilise les bornes figées
   if (lockScale && yLock) {
     minY = yLock.min;
     maxY = yLock.max;
@@ -404,7 +437,7 @@ function MiniChart({
   );
 }
 
-function LockedView({ content, onBack }: { content?: string; onBack: () => void; }) {
+function LockedView({ content }: { content?: string; }) {
   let spec: Phase1Spec = DEFAULT_SPEC;
   try { if (content) spec = { ...DEFAULT_SPEC, ...(JSON.parse(content) as Phase1Spec) }; } catch {}
   return (
@@ -422,13 +455,8 @@ function LockedView({ content, onBack }: { content?: string; onBack: () => void;
           <li><strong>Sliders</strong> : {spec.sliderKeys.join(", ") || "aucun"}</li>
         </ul>
       </div>
+      {/* Graphe lecture seule (auto-scale) */}
       <ReadOnlyChart spec={spec} />
-      <div className="flex gap-3">
-        <a href="/refinements" className="px-4 py-2 rounded-lg border">Visions</a>
-        <button className="px-4 py-2 rounded-lg border" onClick={onBack}>
-          Choisir / créer un autre problème
-        </button>
-      </div>
     </div>
   );
 }
