@@ -51,6 +51,10 @@ export default function Phase1() {
 
   const [spec, setSpec] = useState<Phase1Spec>(DEFAULT_SPEC);
 
+  // ⚙️ contrôle échelle Y
+  const [lockScale, setLockScale] = useState(false);
+  const [yLock, setYLock] = useState<{ min: number; max: number } | null>(null);
+
   useEffect(() => {
     if (p1?.draft && !p1.lockedAt) {
       try {
@@ -117,7 +121,7 @@ export default function Phase1() {
     window.location.href = "/projects";
   };
 
-  // Simulation recalculée à chaque changement => courbe live
+  // Simulation recalculée à chaque changement => série pour le graphe
   const series = useMemo(() => {
     const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
     const arr: number[] = new Array(n + 1);
@@ -128,6 +132,25 @@ export default function Phase1() {
     for (let t = 1; t <= n; t++) arr[t] = arr[t - 1] + (infl - out);
     return arr;
   }, [spec.initialStockValue, spec.inflowValue, spec.outflowValue, spec.horizon]);
+
+  // Bornes auto courantes (utiles pour "Fixer maintenant")
+  const autoBounds = useMemo(() => {
+    const safe = (series && series.length >= 2) ? series : [0, 0];
+    const minY = Math.min(...safe);
+    const maxY = Math.max(...safe);
+    // petit coussin
+    const pad = Math.max(1, (maxY - minY) * 0.05);
+    return { min: minY - pad, max: maxY + pad };
+  }, [series]);
+
+  const onFixScale = () => {
+    setYLock({ ...autoBounds });
+    setLockScale(true);
+  };
+  const onResetScale = () => {
+    setLockScale(false);
+    setYLock(null);
+  };
 
   return (
     <main className="min-h-screen grid place-items-center p-6">
@@ -231,10 +254,35 @@ export default function Phase1() {
               </div>
             </section>
 
-            {/* 4) Graphique */}
-            <section className="space-y-2">
+            {/* 4) Graphique + contrôle échelle */}
+            <section className="space-y-3">
+              <div className="flex items-center gap-3">
+                <label className="inline-flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={lockScale} onChange={() => setLockScale(v => !v)} />
+                  Échelle Y fixe
+                </label>
+                {!lockScale ? (
+                  <button className="px-2 py-1 border rounded text-sm" onClick={onFixScale}>
+                    Fixer maintenant
+                  </button>
+                ) : (
+                  <button className="px-2 py-1 border rounded text-sm" onClick={onResetScale}>
+                    Réinitialiser
+                  </button>
+                )}
+                {lockScale && yLock && (
+                  <span className="text-xs opacity-70">[Y: {Math.round(yLock.min*100)/100} → {Math.round(yLock.max*100)/100}]</span>
+                )}
+              </div>
+
               <h2 className="text-lg font-medium">Graphique du {spec.stockName || "stock"}</h2>
-              <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} />
+              <MiniChart
+                series={series}
+                unitY={spec.derivedStockUnit || ""}
+                unitX={spec.timeUnit}
+                lockScale={lockScale}
+                yLock={yLock}
+              />
             </section>
 
             <div className="flex gap-3">
@@ -301,35 +349,53 @@ function RangeField({ label, value, onChange, min, max, step }: { label: string;
   );
 }
 
-/* Mini graphe SVG : recalcule le path à chaque render en fonction de `series` */
-function MiniChart({ series, unitY, unitX }: { series: number[]; unitY: string; unitX: string; }) {
+/* Mini graphe SVG — avec échelle auto OU échelle verrouillée */
+function MiniChart({
+  series,
+  unitY,
+  unitX,
+  lockScale,
+  yLock,
+}: {
+  series: number[];
+  unitY: string;
+  unitX: string;
+  lockScale: boolean;
+  yLock: { min: number; max: number } | null;
+}) {
   const W = 640, H = 260, PAD = 40;
   const safe = (series && series.length >= 2) ? series : [0, 0];
-  const minY = Math.min(...safe);
-  const maxY = Math.max(...safe);
-  const y0 = minY === maxY ? minY - 1 : minY;
-  const y1 = minY === maxY ? maxY + 1 : maxY;
+
+  // bornes automatiques
+  let minY = Math.min(...safe);
+  let maxY = Math.max(...safe);
+  if (minY === maxY) { minY -= 1; maxY += 1; }
+
+  // si échelle verrouillée, on utilise les bornes figées
+  if (lockScale && yLock) {
+    minY = yLock.min;
+    maxY = yLock.max;
+    if (minY === maxY) { minY -= 1; maxY += 1; }
+  }
 
   const toX = (i: number) => PAD + (i * (W - 2 * PAD)) / (safe.length - 1 || 1);
-  const toY = (v: number) => H - PAD - ((v - y0) * (H - 2 * PAD)) / (y1 - y0 || 1);
+  const toY = (v: number) => H - PAD - ((v - minY) * (H - 2 * PAD)) / (maxY - minY || 1);
   const d = safe.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i)},${toY(v)}`).join(" ");
-
-  const yMid = (y0 + y1) / 2;
-  const pathKey = `${safe[0]}-${safe[safe.length - 1]}-${safe.length}`;
+  const yMid = (minY + maxY) / 2;
+  const pathKey = `${safe[0]}-${safe[safe.length - 1]}-${safe.length}-${minY}-${maxY}`;
 
   return (
     <svg width={W} height={H} className="border rounded-lg bg-white">
       <line x1={PAD} y1={H-PAD} x2={W-PAD} y2={H-PAD} stroke="#ccc" />
       <line x1={PAD} y1={PAD}   x2={PAD}   y2={H-PAD} stroke="#ccc" />
 
-      {[y0, yMid, y1].map((v, idx) => (
+      {[minY, yMid, maxY].map((v, idx) => (
         <g key={idx}>
           <line x1={PAD-4} y1={toY(v)} x2={W-PAD} y2={toY(v)} stroke="#eee" />
           <text x={8} y={toY(v)+4} fontSize="10" fill="#666">{Math.round(v*100)/100}</text>
         </g>
       ))}
 
-      {/* Forcer le redraw si besoin */}
       <path key={pathKey} d={d} fill="none" stroke="#222" strokeWidth={2} />
 
       <text x={W/2} y={H-8} fontSize="11" fill="#666" textAnchor="middle">{unitX}</text>
@@ -376,5 +442,5 @@ function ReadOnlyChart({ spec }: { spec: Phase1Spec }) {
     for (let t = 1; t <= n; t++) arr[t] = arr[t-1] + (infl - out);
     return arr;
   }, [spec]);
-  return <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} />;
+  return <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} lockScale={false} yLock={null} />;
 }
