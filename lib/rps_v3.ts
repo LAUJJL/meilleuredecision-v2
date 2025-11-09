@@ -1,28 +1,28 @@
 // lib/rps_v3.ts
-// v3 minimaliste : Problème (Project) → Vision (Sequence) → Phases (0 = définition de la vision ; 1 = stock + flux constants)
+// v3 : Problème → Vision → Phases (0 = définition de la vision ; 1 = stock + flux constants)
 
 export type Project = {
   id: string;
-  title: string;     // nom du problème
-  tag: string;       // définition courte (optionnelle)
-  lockedAt: string;  // verrouillage dès création (philosophie immuable)
+  title: string;
+  tag: string;
+  lockedAt: string;
 };
 
 export type Sequence = {
   id: string;
   projectId: string;
-  title: string;     // nom court de la vision
-  tag: string;       // définition courte (optionnelle)
-  lockedAt: string;  // verrouillé dès création
+  title: string;
+  tag: string;
+  lockedAt: string;
 };
 
 export type Phase = {
   id: string;
   sequenceId: string;
-  idx: number;             // 0 = définition de la vision (texte), 1 = stock+flux constants, ...
-  draft?: string;          // contenu en cours (string ⇒ JSON.stringify si besoin)
-  content?: string;        // contenu validé (lecture seule) (string ⇒ JSON.stringify si structuré)
-  testsDone?: boolean;     // conservé pour compat ; V1 : true
+  idx: number;
+  draft?: string;
+  content?: string;
+  testsDone?: boolean;
   bypassReason?: string;
   lockedAt?: string;
 };
@@ -52,13 +52,13 @@ function setState(next: RpsState) {
   localStorage.setItem(KEY, JSON.stringify(next));
 }
 
-/* ——— Utilitaires sélection ——— */
+/* Sélection */
 export function clearSelection() {
   const s = getState();
   setState({ ...s, currentProjectId: undefined, currentSequenceId: undefined });
 }
 
-/* ——— Projets ——— */
+/* Projets */
 export function createProject(title: string, tag: string): string {
   const s = getState();
   const id = crypto.randomUUID();
@@ -74,7 +74,7 @@ export function selectProject(projectId: string) {
   setState(next);
 }
 
-/* ——— Visions (ex “séquences”) ——— */
+/* Visions */
 export function createSequence(title: string, tag: string): string | undefined {
   const s = getState();
   if (!s.currentProjectId) return;
@@ -82,8 +82,7 @@ export function createSequence(title: string, tag: string): string | undefined {
   const seq: Sequence = { id, projectId: s.currentProjectId, title, tag, lockedAt: nowISO() };
   const next = { ...s, sequences: [seq, ...s.sequences], currentSequenceId: id };
   setState(next);
-  // créer Phase 0 (définition de la vision)
-  ensurePhase( id, 0 );
+  ensurePhase(id, 0);
   return id;
 }
 export function selectSequence(sequenceId: string) {
@@ -93,7 +92,7 @@ export function selectSequence(sequenceId: string) {
   setState(next);
 }
 
-/* ——— Phases génériques ——— */
+/* Phases */
 export function listPhases(sequenceId: string): Phase[] {
   return getState().phases.filter(ph => ph.sequenceId === sequenceId).sort((a,b) => a.idx - b.idx);
 }
@@ -108,7 +107,7 @@ function ensurePhase(sequenceId: string, idx: number) {
   }
 }
 
-/* ——— Phase 0 : Définition de la vision (texte libre) ——— */
+/* Phase 0 */
 export function updatePhase0Draft(content: string) {
   const s = getState();
   if (!s.currentSequenceId) return;
@@ -137,26 +136,34 @@ export function validatePhase0(opts: { testsDone: boolean; bypassReason?: string
     return ph;
   });
   setState({ ...s, phases });
-  // Préparer la Phase 1 (si non déjà créée)
   ensurePhase(s.currentSequenceId, 1);
 }
 
-/* ——— Phase 1 : Stock + flux constants ——— */
-
-// Choix proposés pour les unités de temps (pas du modèle = unité de temps)
+/* Phase 1 : Stock + flux constants */
 export const TIME_UNITS = ["seconde", "minute", "heure", "jour", "semaine", "mois", "trimestre", "semestre", "année"] as const;
 export type TimeUnit = typeof TIME_UNITS[number];
 
+export type SliderKey = "inflow" | "outflow" | "initial";
 export type Phase1Spec = {
-  stockName: string;        // ex. Trésorerie, Habitants, Points, etc.
-  stockUnit: string;        // ex. euros, habitants, points
-  timeUnit: TimeUnit;       // ex. mois, année
-  inflowName: string;       // ex. Recettes, Naissances, Victoires
-  outflowName: string;      // ex. Dépenses, Décès, Défaites
-  initialStockName: string; // ex. Trésorerie initiale
-  // unités dérivées (juste pour affichage/rappel)
-  derivedFlowUnit?: string; // = `${stockUnit} / ${timeUnit}`
-  derivedStockUnit?: string; // = stockUnit
+  stockName: string;
+  stockUnit: string;
+  timeUnit: TimeUnit;
+  inflowName: string;
+  outflowName: string;
+  initialStockName: string;
+
+  // Valeurs numériques
+  initialStockValue: number; // valeur du stock au temps 0
+  inflowValue: number;       // flux constant entrant (>=0)
+  outflowValue: number;      // flux constant sortant (>=0)
+  horizon: number;           // nombre de pas (ex. 60)
+
+  // Sliders (0 à 2)
+  sliderKeys: SliderKey[];   // ex. ["inflow","outflow"]
+
+  // Unités dérivées (affichage)
+  derivedFlowUnit?: string;
+  derivedStockUnit?: string;
 };
 
 export function getPhase1(sequenceId: string) {
@@ -166,12 +173,22 @@ export function ensurePhase1(sequenceId: string) {
   ensurePhase(sequenceId, 1);
 }
 
-// Met à jour le draft JSON de la phase 1
+function clampSliders(keys: SliderKey[]): SliderKey[] {
+  const uniq: SliderKey[] = [];
+  for (const k of keys) {
+    if (!uniq.includes(k)) uniq.push(k);
+    if (uniq.length >= 2) break;
+  }
+  return uniq;
+}
+
 export function updatePhase1Draft(spec: Phase1Spec) {
   const s = getState();
   if (!s.currentSequenceId) return;
+  const sliderKeys = clampSliders(spec.sliderKeys || []);
   const enriched: Phase1Spec = {
     ...spec,
+    sliderKeys,
     derivedFlowUnit: spec.stockUnit ? `${spec.stockUnit} / ${spec.timeUnit}` : "",
     derivedStockUnit: spec.stockUnit || "",
   };
@@ -185,14 +202,13 @@ export function updatePhase1Draft(spec: Phase1Spec) {
   setState({ ...s, phases });
 }
 
-// Valide la phase 1 (lock + transfère draft → content)
 export function validatePhase1() {
   const s = getState();
   if (!s.currentSequenceId) return;
   const phases = s.phases.map(ph => {
     if (ph.sequenceId === s.currentSequenceId && ph.idx === 1 && !ph.lockedAt) {
       const content = (ph.draft || "").trim();
-      if (!content) return ph; // rien à valider
+      if (!content) return ph;
       return { ...ph, content, lockedAt: nowISO(), draft: undefined, testsDone: true };
     }
     return ph;
