@@ -40,10 +40,8 @@ export default function Phase0() {
   const onValidate = () => {
     if (locked) return;
     if (!(draft || "").trim()) return;
-    // on valide sans logique de tests en V1
     validatePhase0({ testsDone: true });
-    // ensuite on ira vers /phase1 ; pour l'instant retour aux visions
-    window.location.href = "/refinements";
+    window.location.href = "/phase1"; // ✅ enchaînement Phase 1
   };
 
   const goChooseAnotherProject = () => {
@@ -56,7 +54,6 @@ export default function Phase0() {
       <div className="w-full max-w-2xl space-y-6">
         <h1 className="text-xl font-semibold text-center">Définition de la vision (non numérotée)</h1>
 
-        {/* Contexte (lecture seule) : seulement les NOMS */}
         <div className="rounded-lg border p-3 bg-gray-50 text-sm">
           <div><span className="opacity-70">Problème :</span> {project.title}</div>
           <div className="mt-1"><span className="opacity-70">Vision :</span> {vision.title}</div>
@@ -67,7 +64,7 @@ export default function Phase0() {
             <div className="text-sm opacity-70">Cette définition est validée (lecture seule).</div>
             <div className="rounded-lg border p-3 whitespace-pre-wrap bg-white">{p0.content || "—"}</div>
             <div className="flex gap-3">
-              <a href="/refinements" className="px-4 py-2 rounded-lg border">Visions</a>
+              <a href="/phase1" className="px-4 py-2 rounded-lg border">Aller à la Phase 1</a>
               <button className="px-4 py-2 rounded-lg border" onClick={goChooseAnotherProject}>
                 Choisir / créer un autre problème
               </button>
