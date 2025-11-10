@@ -4,76 +4,138 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   getState,
-  selectSequence,
-  createSequence,
+  saveState,
+  TIME_UNITS,
   listPhases,
-  deleteSequence,
   clearSelection,
 } from "@/lib/rps_v3";
+
+/**
+ * Page "Visions du problème"
+ * - Liste les visions du problème courant
+ * - Création d'une nouvelle vision
+ * - Pour chaque vision : lien "Ouvrir la définition" (Phase 0)
+ *   + nouveau bouton "→ Phase 2" (visible si Phase 1 est validée)
+ *
+ * NOTE : le bouton "→ Phase 2" envoie vers /phase2?seq=<visionId>
+ * La page Phase 2 lira ce paramètre et ouvrira directement la vision.
+ */
 
 export default function RefinementsPage() {
   const s = getState();
   const project = s.projects.find(p => p.id === s.currentProjectId);
-  const sequences = useMemo(
-    () => s.sequences.filter(r => r.projectId === s.currentProjectId),
-    [s]
-  );
 
+  // Si aucun projet n'est sélectionné, retour aux projets
   useEffect(() => {
-    if (!project) window.location.href = "/projects";
-  }, [project]);
+    if (!project) {
+      window.location.href = "/projects";
+    }
+  }, [project?.id]);
 
+  const visions = useMemo(() => {
+    if (!project) return [];
+    return s.sequences.filter(v => v.projectId === project.id);
+  }, [s.sequences, project?.id]);
+
+  // Création d'une vision
   const [title, setTitle] = useState("");
-  const [tag, setTag] = useState("");
+  const [shortDef, setShortDef] = useState("");
 
-  if (!project) return null;
-
-  const openSeq = (id: string) => {
-    selectSequence(id);
+  const createVision = () => {
+    const t = title.trim();
+    if (!project || !t) return;
+    const v = {
+      id: crypto.randomUUID(),
+      projectId: project.id,
+      title: t,
+      short: shortDef.trim(),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    s.sequences.unshift(v);
+    s.currentSequenceId = v.id;
+    saveState(s);
+    // Aller directement à sa définition (phase 0)
     window.location.href = "/phase0";
   };
 
-  const create = () => {
-    const name = title.trim();
-    if (!name) return;
-    const id = createSequence(name, tag.trim());
-    if (id) window.location.href = "/phase0";
+  const openPhase0 = (visionId: string) => {
+    s.currentSequenceId = visionId;
+    saveState(s);
+    window.location.href = "/phase0";
   };
 
-  const backToProjects = () => {
-    clearSelection();
-    window.location.href = "/projects";
+  const canGoPhase2 = (visionId: string) => {
+    const phases = listPhases(visionId);
+    // on considère "Phase 1 validée" si un item idx=1 existe et hasValidated = true
+    const p1 = phases.find(p => p.idx === 1);
+    return !!p1?.validated;
   };
+
+  const goPhase2 = (visionId: string) => {
+    // Pas besoin de modifier l'état : on passe par ?seq=
+    window.location.href = `/phase2?seq=${encodeURIComponent(visionId)}`;
+  };
+
+  const deleteVision = (visionId: string) => {
+    if (!confirm("Supprimer définitivement cette vision ?")) return;
+    const i = s.sequences.findIndex(v => v.id === visionId);
+    if (i >= 0) {
+      s.sequences.splice(i, 1);
+      if (s.currentSequenceId === visionId) s.currentSequenceId = undefined as any;
+      saveState(s);
+      window.location.reload();
+    }
+  };
+
+  if (!project) return null;
 
   return (
     <main className="min-h-screen grid place-items-center p-6">
-      <div className="w-full max-w-4xl space-y-6">
-        <h1 className="text-2xl font-semibold text-center">Visions du problème</h1>
-        <div className="text-center opacity-70">Problème : {project.title}</div>
+      <div className="w-full max-w-3xl space-y-6">
+        <h1 className="text-xl font-semibold text-center">Visions du problème</h1>
+        <div className="text-sm text-center opacity-70">Problème : {project.title}</div>
 
         {/* Visions existantes */}
         <section className="space-y-2">
-          <h2 className="text-lg font-medium">Ouvrir une vision existante</h2>
-          <ul className="space-y-1">
-            {sequences.length === 0 && <li className="opacity-60">Aucune vision pour l’instant.</li>}
-            {sequences.map(v => {
-              const p0 = listPhases(v.id).find(p => p.idx === 0);
-              const status = p0?.lockedAt ? "• Définition de la vision validée" : "• Définition de la vision (en cours)";
+          <h2 className="font-medium">Ouvrir une vision existante</h2>
+          {visions.length === 0 && (
+            <div className="text-sm opacity-70">Aucune vision pour le moment.</div>
+          )}
+          <ul className="space-y-2">
+            {visions.map(v => {
+              const phases = listPhases(v.id);
+              const hasP1 = phases.some(p => p.idx === 1);
+              const p1Validated = phases.find(p => p.idx === 1)?.validated;
+
               return (
-                <li key={v.id} className="flex items-center justify-between gap-3">
-                  <span>{v.title} {status ? <span className="opacity-60">{status}</span> : null}</span>
-                  <div className="flex gap-3">
-                    <button className="underline" onClick={() => openSeq(v.id)}>Ouvrir la définition de la vision</button>
+                <li key={v.id} className="border rounded p-3">
+                  <div className="font-medium">{v.title}</div>
+                  {v.short && <div className="text-sm opacity-70">{v.short}</div>}
+
+                  <div className="mt-2 flex flex-wrap gap-2">
                     <button
-                      className="text-red-600 underline"
-                      onClick={() => {
-                        if (confirm("Supprimer cette vision et ses phases ?")) {
-                          deleteSequence(v.id);
-                          location.reload();
-                        }
-                      }}
+                      className="px-3 py-1 border rounded"
+                      onClick={() => openPhase0(v.id)}
                     >
-                      Supprimer
+                      Ouvrir la définition de la vision
+                    </button>
+
+                    {/* Bouton → Phase 2 : visible si Phase 1 existe ET validée */}
+                    <button
+                      className={`px-3 py-1 border rounded ${p1Validated ? "" : "opacity-50 cursor-not-allowed"}`}
+                      disabled={!p1Validated}
+                      onClick={() => goPhase2(v.id)}
+                      title={p1Validated ? "" : "Phase 1 non validée pour cette vision"}
+                    >
+                      → Phase 2
+                    </button>
+
+                    <button
+                      className="px-3 py-1 border rounded"
+                      onClick={() => deleteVision(v.id)}
+                    >
+                      Supprimer la vision
                     </button>
                   </div>
                 </li>
@@ -82,32 +144,42 @@ export default function RefinementsPage() {
           </ul>
         </section>
 
-        {/* Nouvelle vision */}
+        {/* Création */}
         <section className="space-y-3">
-          <h2 className="text-lg font-medium">Créer une nouvelle vision</h2>
-          <input
-            className="w-full border rounded-lg p-2"
-            placeholder="Nom de la vision (80 car. max)"
-            maxLength={80}
-            value={title}
-            onChange={e => setTitle(e.target.value)}
-          />
-          <input
-            className="w-full border rounded-lg p-2"
-            placeholder="Définition courte (1 ligne)"
-            value={tag}
-            onChange={e => setTag(e.target.value)}
-          />
-          <button className="w-full border rounded-lg p-2" onClick={create}>
-            Créer une nouvelle vision (ouvre sa définition)
-          </button>
-        </section>
+          <h2 className="font-medium">Créer une nouvelle vision</h2>
+          <label className="block">
+            <span className="text-sm">Nom de la vision (80 car. max)</span>
+            <input
+              className="mt-1 w-full border rounded p-2"
+              value={title}
+              onChange={e => setTitle(e.target.value.slice(0, 80))}
+              placeholder="Ex : Vision 'trésorerie mensuelle'"
+            />
+          </label>
 
-        <div>
-          <button className="border rounded-lg px-3 py-2" onClick={backToProjects}>
-            ← Revenir aux problèmes
-          </button>
-        </div>
+          <label className="block">
+            <span className="text-sm">Définition courte (1 ligne)</span>
+            <input
+              className="mt-1 w-full border rounded p-2"
+              value={shortDef}
+              onChange={e => setShortDef(e.target.value)}
+              placeholder="Facultatif"
+            />
+          </label>
+
+          <div className="flex gap-2">
+            <button
+              className={`px-3 py-2 border rounded ${title.trim() ? "" : "opacity-50 cursor-not-allowed"}`}
+              disabled={!title.trim()}
+              onClick={createVision}
+            >
+              Créer une nouvelle vision (ouvre sa définition)
+            </button>
+            <button className="px-3 py-2 border rounded" onClick={() => { clearSelection(); window.location.href="/projects"; }}>
+              ← Revenir aux problèmes
+            </button>
+          </div>
+        </section>
       </div>
     </main>
   );
