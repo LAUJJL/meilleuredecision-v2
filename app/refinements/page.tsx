@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   getState,
   saveState,
-  TIME_UNITS,
   listPhases,
   clearSelection,
 } from "@/lib/rps_v3";
@@ -15,7 +14,7 @@ import {
  * - Liste les visions du problème courant
  * - Création d'une nouvelle vision
  * - Pour chaque vision : lien "Ouvrir la définition" (Phase 0)
- *   + nouveau bouton "→ Phase 2" (visible si Phase 1 est validée)
+ *   + bouton "→ Phase 2" (visible si Phase 1 est validée)
  *
  * NOTE : le bouton "→ Phase 2" envoie vers /phase2?seq=<visionId>
  * La page Phase 2 lira ce paramètre et ouvrira directement la vision.
@@ -67,13 +66,11 @@ export default function RefinementsPage() {
 
   const canGoPhase2 = (visionId: string) => {
     const phases = listPhases(visionId);
-    // on considère "Phase 1 validée" si un item idx=1 existe et hasValidated = true
     const p1 = phases.find(p => p.idx === 1);
     return !!p1?.validated;
   };
 
   const goPhase2 = (visionId: string) => {
-    // Pas besoin de modifier l'état : on passe par ?seq=
     window.location.href = `/phase2?seq=${encodeURIComponent(visionId)}`;
   };
 
@@ -105,23 +102,17 @@ export default function RefinementsPage() {
           <ul className="space-y-2">
             {visions.map(v => {
               const phases = listPhases(v.id);
-              const hasP1 = phases.some(p => p.idx === 1);
               const p1Validated = phases.find(p => p.idx === 1)?.validated;
-
               return (
                 <li key={v.id} className="border rounded p-3">
                   <div className="font-medium">{v.title}</div>
                   {v.short && <div className="text-sm opacity-70">{v.short}</div>}
 
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <button
-                      className="px-3 py-1 border rounded"
-                      onClick={() => openPhase0(v.id)}
-                    >
+                    <button className="px-3 py-1 border rounded" onClick={() => openPhase0(v.id)}>
                       Ouvrir la définition de la vision
                     </button>
 
-                    {/* Bouton → Phase 2 : visible si Phase 1 existe ET validée */}
                     <button
                       className={`px-3 py-1 border rounded ${p1Validated ? "" : "opacity-50 cursor-not-allowed"}`}
                       disabled={!p1Validated}
@@ -131,10 +122,7 @@ export default function RefinementsPage() {
                       → Phase 2
                     </button>
 
-                    <button
-                      className="px-3 py-1 border rounded"
-                      onClick={() => deleteVision(v.id)}
-                    >
+                    <button className="px-3 py-1 border rounded" onClick={() => deleteVision(v.id)}>
                       Supprimer la vision
                     </button>
                   </div>
