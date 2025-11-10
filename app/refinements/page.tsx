@@ -1,13 +1,8 @@
-// app/refinements/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  getState,
-  saveState,
-  listPhases,
-  clearSelection,
-} from "@/lib/rps_v3";
+// Import SANS alias pour éviter tout souci de config de paths sur Vercel
+import { getState, saveState, listPhases, clearSelection } from "../../lib/rps_v3";
 
 /**
  * Page "Visions du problème"
@@ -15,16 +10,12 @@ import {
  * - Création d'une nouvelle vision
  * - Pour chaque vision : lien "Ouvrir la définition" (Phase 0)
  *   + bouton "→ Phase 2" (visible si Phase 1 est validée)
- *
- * NOTE : le bouton "→ Phase 2" envoie vers /phase2?seq=<visionId>
- * La page Phase 2 lira ce paramètre et ouvrira directement la vision.
  */
-
 export default function RefinementsPage() {
   const s = getState();
-  const project = s.projects.find(p => p.id === s.currentProjectId);
+  const project = s.projects.find((p) => p.id === s.currentProjectId);
 
-  // Si aucun projet n'est sélectionné, retour aux projets
+  // Si aucun projet sélectionné → retour aux problèmes
   useEffect(() => {
     if (!project) {
       window.location.href = "/projects";
@@ -33,7 +24,7 @@ export default function RefinementsPage() {
 
   const visions = useMemo(() => {
     if (!project) return [];
-    return s.sequences.filter(v => v.projectId === project.id);
+    return s.sequences.filter((v) => v.projectId === project.id);
   }, [s.sequences, project?.id]);
 
   // Création d'une vision
@@ -54,7 +45,6 @@ export default function RefinementsPage() {
     s.sequences.unshift(v);
     s.currentSequenceId = v.id;
     saveState(s);
-    // Aller directement à sa définition (phase 0)
     window.location.href = "/phase0";
   };
 
@@ -66,7 +56,7 @@ export default function RefinementsPage() {
 
   const canGoPhase2 = (visionId: string) => {
     const phases = listPhases(visionId);
-    const p1 = phases.find(p => p.idx === 1);
+    const p1 = phases.find((p) => p.idx === 1);
     return !!p1?.validated;
   };
 
@@ -76,7 +66,7 @@ export default function RefinementsPage() {
 
   const deleteVision = (visionId: string) => {
     if (!confirm("Supprimer définitivement cette vision ?")) return;
-    const i = s.sequences.findIndex(v => v.id === visionId);
+    const i = s.sequences.findIndex((v) => v.id === visionId);
     if (i >= 0) {
       s.sequences.splice(i, 1);
       if (s.currentSequenceId === visionId) s.currentSequenceId = undefined as any;
@@ -93,16 +83,15 @@ export default function RefinementsPage() {
         <h1 className="text-xl font-semibold text-center">Visions du problème</h1>
         <div className="text-sm text-center opacity-70">Problème : {project.title}</div>
 
-        {/* Visions existantes */}
         <section className="space-y-2">
           <h2 className="font-medium">Ouvrir une vision existante</h2>
           {visions.length === 0 && (
             <div className="text-sm opacity-70">Aucune vision pour le moment.</div>
           )}
           <ul className="space-y-2">
-            {visions.map(v => {
+            {visions.map((v) => {
               const phases = listPhases(v.id);
-              const p1Validated = phases.find(p => p.idx === 1)?.validated;
+              const p1Validated = phases.find((p) => p.idx === 1)?.validated;
               return (
                 <li key={v.id} className="border rounded p-3">
                   <div className="font-medium">{v.title}</div>
@@ -114,7 +103,9 @@ export default function RefinementsPage() {
                     </button>
 
                     <button
-                      className={`px-3 py-1 border rounded ${p1Validated ? "" : "opacity-50 cursor-not-allowed"}`}
+                      className={`px-3 py-1 border rounded ${
+                        p1Validated ? "" : "opacity-50 cursor-not-allowed"
+                      }`}
                       disabled={!p1Validated}
                       onClick={() => goPhase2(v.id)}
                       title={p1Validated ? "" : "Phase 1 non validée pour cette vision"}
@@ -132,7 +123,6 @@ export default function RefinementsPage() {
           </ul>
         </section>
 
-        {/* Création */}
         <section className="space-y-3">
           <h2 className="font-medium">Créer une nouvelle vision</h2>
           <label className="block">
@@ -140,7 +130,7 @@ export default function RefinementsPage() {
             <input
               className="mt-1 w-full border rounded p-2"
               value={title}
-              onChange={e => setTitle(e.target.value.slice(0, 80))}
+              onChange={(e) => setTitle(e.target.value.slice(0, 80))}
               placeholder="Ex : Vision 'trésorerie mensuelle'"
             />
           </label>
@@ -150,20 +140,28 @@ export default function RefinementsPage() {
             <input
               className="mt-1 w-full border rounded p-2"
               value={shortDef}
-              onChange={e => setShortDef(e.target.value)}
+              onChange={(e) => setShortDef(e.target.value)}
               placeholder="Facultatif"
             />
           </label>
 
           <div className="flex gap-2">
             <button
-              className={`px-3 py-2 border rounded ${title.trim() ? "" : "opacity-50 cursor-not-allowed"}`}
+              className={`px-3 py-2 border rounded ${
+                title.trim() ? "" : "opacity-50 cursor-not-allowed"
+              }`}
               disabled={!title.trim()}
               onClick={createVision}
             >
               Créer une nouvelle vision (ouvre sa définition)
             </button>
-            <button className="px-3 py-2 border rounded" onClick={() => { clearSelection(); window.location.href="/projects"; }}>
+            <button
+              className="px-3 py-2 border rounded"
+              onClick={() => {
+                clearSelection();
+                window.location.href = "/projects";
+              }}
+            >
               ← Revenir aux problèmes
             </button>
           </div>
