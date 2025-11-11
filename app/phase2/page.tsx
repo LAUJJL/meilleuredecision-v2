@@ -5,16 +5,16 @@ import { useEffect, useState } from 'react';
 
 export default function Phase2Page() {
   const router = useRouter();
-  const [vision, setVision] = useState<{ id: number; name: string } | null>(null);
+  const [vision, setVision] = useState<{ id: number; name: string; phase1Done?: boolean } | null>(null);
 
   useEffect(() => {
-    const saved = localStorage.getItem('currentVision');
-    if (!saved) {
-      router.push('/visions');
-      return;
-    }
-    setVision(JSON.parse(saved));
-  }, []);
+    const v = localStorage.getItem('currentVision');
+    if (!v) { router.push('/visions'); return; }
+    const parsed = JSON.parse(v);
+    setVision(parsed);
+    // Sécurité : pas d’accès si Phase 1 non validée
+    if (!parsed.phase1Done) router.push('/phase1');
+  }, [router]);
 
   return (
     <main style={{ padding: 40 }}>
@@ -23,7 +23,7 @@ export default function Phase2Page() {
       </nav>
 
       <h2>Phase 2 — {vision?.name || 'aucune vision sélectionnée'}</h2>
-      <p>Contenu de la Phase 2 (à compléter selon vos spécifications).</p>
+      <p>Contenu de la Phase 2 (à compléter : modèle, graphiques, etc.).</p>
 
       <div style={{ marginTop: 20 }}>
         <button onClick={() => router.push('/visions')}>← Revenir aux visions</button>{' '}
