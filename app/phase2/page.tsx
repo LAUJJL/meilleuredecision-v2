@@ -1,24 +1,33 @@
-// app/phase2/page.tsx
-// Page de démonstration Phase 2 – surtout ne pas importer /refinements/page.tsx ici.
-
-import Link from "next/link";
+'use client';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
 
 export default function Phase2Page() {
+  const router = useRouter();
+  const [vision, setVision] = useState<{ id: number; name: string } | null>(null);
+
+  useEffect(() => {
+    const saved = localStorage.getItem('currentVision');
+    if (!saved) {
+      router.push('/visions');
+      return;
+    }
+    setVision(JSON.parse(saved));
+  }, []);
+
   return (
-    <main style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ fontSize: 22, fontWeight: 600, marginBottom: 16 }}>Phase 2</h1>
+    <main style={{ padding: 40 }}>
+      <nav style={{ marginBottom: 20 }}>
+        <Link href="/">Accueil</Link> → <Link href="/visions">Visions</Link> → <b>Phase 2</b>
+      </nav>
 
-      <p style={{ marginBottom: 16 }}>
-        Contenu de la Phase 2 (à compléter selon vos specs).
-      </p>
+      <h2>Phase 2 — {vision?.name || 'aucune vision sélectionnée'}</h2>
+      <p>Contenu de la Phase 2 (à compléter selon vos spécifications).</p>
 
-      <div style={{ display: "flex", gap: 12 }}>
-        <Link href="/refinements" style={{ padding: "8px 12px", border: "1px solid #ccc", borderRadius: 8 }}>
-          ← Revenir aux visions
-        </Link>
-        <Link href="/" style={{ padding: "8px 12px", border: "1px solid #ccc", borderRadius: 8 }}>
-          Accueil
-        </Link>
+      <div style={{ marginTop: 20 }}>
+        <button onClick={() => router.push('/visions')}>← Revenir aux visions</button>{' '}
+        <Link href="/">Accueil</Link>
       </div>
     </main>
   );
