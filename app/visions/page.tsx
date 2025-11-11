@@ -7,6 +7,7 @@ interface Vision {
   id: number;
   name: string;
   shortDef: string;
+  phase1Done?: boolean; // ✅ indicateur de validation Phase 1
 }
 
 export default function VisionsPage() {
@@ -19,16 +20,15 @@ export default function VisionsPage() {
 
   useEffect(() => {
     const saved = localStorage.getItem('currentProblem');
-    if (!saved) {
-      router.push('/');
-      return;
-    }
+    if (!saved) { router.push('/'); return; }
     const p = JSON.parse(saved);
     setProblem(p);
 
     const allVisions = JSON.parse(localStorage.getItem('visions') || '{}');
     setVisions(allVisions[p.id] || []);
-  }, []);
+    const cur = localStorage.getItem('currentVision');
+    if (cur) setSelectedVision(JSON.parse(cur));
+  }, [router]);
 
   const saveVisions = (list: Vision[]) => {
     if (!problem) return;
@@ -40,21 +40,29 @@ export default function VisionsPage() {
 
   const addVision = () => {
     if (!name.trim()) return;
-    const newVision: Vision = { id: Date.now(), name, shortDef };
+    const newVision: Vision = { id: Date.now(), name, shortDef, phase1Done: false };
     saveVisions([...visions, newVision]);
-    setName('');
-    setShortDef('');
+    setName(''); setShortDef('');
   };
 
   const deleteVision = (id: number) => {
     if (!confirm('Supprimer cette vision ?')) return;
     saveVisions(visions.filter(v => v.id !== id));
+    const cur = localStorage.getItem('currentVision');
+    if (cur && JSON.parse(cur).id === id) localStorage.removeItem('currentVision');
   };
 
   const openVision = (v: Vision) => {
     setSelectedVision(v);
     localStorage.setItem('currentVision', JSON.stringify(v));
   };
+
+  const goPhase1 = () => {
+    if (!selectedVision) return;
+    router.push('/phase1');
+  };
+
+  const canGoPhase2 = !!selectedVision && !!selectedVision.phase1Done;
 
   return (
     <main style={{ padding: 40 }}>
@@ -63,18 +71,21 @@ export default function VisionsPage() {
       </nav>
 
       <h2>Visions du problème : {problem?.name}</h2>
-      <p style={{ color: 'gray' }}>
-        Cette page est <b>client</b>. Elle contient les visions du problème sélectionné.
-      </p>
 
       <section style={{ marginTop: 20 }}>
         <h3>Ouvrir une vision existante</h3>
         {visions.length === 0 && <p>Aucune vision pour ce problème.</p>}
         {visions.map(v => (
-          <div key={v.id}>
-            {v.name} — {v.shortDef || 'pas de définition courte'}{' '}
-            <button onClick={() => openVision(v)}>Ouvrir</button>{' '}
-            <button onClick={() => deleteVision(v.id)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>
+          <div key={v.id} style={{ marginBottom: 6 }}>
+            <button onClick={() => openVision(v)} style={{ marginRight: 8 }}>
+              Sélectionner
+            </button>
+            <b>{v.name}</b> — {v.shortDef || 'pas de définition courte'}{' '}
+            <span style={{ color: v.phase1Done ? 'green' : 'gray' }}>
+              {v.phase1Done ? '• Phase 1 validée' : '• Phase 1 à faire'}
+            </span>{' '}
+            <button onClick={() => deleteVision(v.id)}
+              style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>
               Supprimer
             </button>
           </div>
@@ -102,20 +113,26 @@ export default function VisionsPage() {
 
       <hr style={{ margin: '20px 0' }} />
 
-      <button
-        onClick={() => router.push('/phase2')}
-        disabled={!selectedVision}
-        style={{
-          background: selectedVision ? '#0070f3' : 'gray',
-          color: 'white',
-          border: 'none',
-          padding: '8px 16px',
-          borderRadius: 6,
-          cursor: selectedVision ? 'pointer' : 'not-allowed'
-        }}
-      >
-        Aller à la phase 2
-      </button>
+      <div style={{ display: 'flex', gap: 12 }}>
+        <button onClick={goPhase1} disabled={!selectedVision}>
+          {selectedVision?.phase1Done ? 'Revoir / Modifier la phase 1' : 'Démarrer la phase 1'}
+        </button>
+
+        <button
+          onClick={() => router.push('/phase2')}
+          disabled={!canGoPhase2}
+          style={{
+            background: canGoPhase2 ? '#0070f3' : 'gray',
+            color: 'white',
+            border: 'none',
+            padding: '8px 16px',
+            borderRadius: 6,
+            cursor: canGoPhase2 ? 'pointer' : 'not-allowed'
+          }}
+        >
+          Aller à la phase 2
+        </button>
+      </div>
     </main>
   );
 }
