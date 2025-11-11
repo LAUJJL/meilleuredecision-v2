@@ -6,9 +6,8 @@ import { useRouter } from 'next/navigation';
 interface Vision {
   id: number;
   name: string;
-  longDef: string;       // ⬅️ définition longue (remplace shortDef)
+  longDef: string;       // définition longue
   phase1Done?: boolean;  // indicateur de validation Phase 1
-  // phase1 / phase2 restent inchangées si vous les avez déjà ajoutées ailleurs
 }
 
 export default function VisionsPage() {
@@ -19,7 +18,7 @@ export default function VisionsPage() {
 
   // Formulaire création
   const [name, setName] = useState('');
-  const [longDef, setLongDef] = useState(''); // ⬅️ textarea multi-lignes
+  const [longDef, setLongDef] = useState('');
 
   useEffect(() => {
     const saved = localStorage.getItem('currentProblem');
@@ -27,35 +26,33 @@ export default function VisionsPage() {
     const p = JSON.parse(saved);
     setProblem(p);
 
-    // Charger les visions du problème
+    // Charger visions par problème
     const allVisionsRaw = localStorage.getItem('visions');
     const allVisions = allVisionsRaw ? JSON.parse(allVisionsRaw) : {};
     const list: any[] = allVisions[p.id] || [];
 
-    // 🔁 Migration simple: si on trouve encore shortDef, on le bascule en longDef
+    // Migration éventuelle shortDef -> longDef
     const migrated: Vision[] = list.map(v => {
       if (v && typeof v === 'object') {
         const hasLong = typeof v.longDef === 'string';
-        const hasShort = typeof v.shortDef === 'string';
+        const hasShort = typeof (v as any).shortDef === 'string';
         if (!hasLong && hasShort) {
-          return { ...v, longDef: v.shortDef, shortDef: undefined };
+          return { ...v, longDef: (v as any).shortDef, shortDef: undefined } as any;
         }
       }
       return v as Vision;
     });
 
     if (JSON.stringify(migrated) !== JSON.stringify(list)) {
-      // sauvegarder migration
       allVisions[p.id] = migrated;
       localStorage.setItem('visions', JSON.stringify(allVisions));
     }
     setVisions(migrated);
 
-    // Recharger la sélection courante si présente
+    // Recharger sélection courante si présente
     const cur = localStorage.getItem('currentVision');
     if (cur) {
       const v = JSON.parse(cur);
-      // s'assurer que currentVision a bien longDef (migration)
       if (v && typeof v === 'object') {
         if (typeof v.longDef !== 'string' && typeof v.shortDef === 'string') {
           v.longDef = v.shortDef;
@@ -75,15 +72,26 @@ export default function VisionsPage() {
     setVisions(list);
   };
 
+  const openVision = (v: Vision) => {
+    setSelectedVision(v);
+    localStorage.setItem('currentVision', JSON.stringify(v));
+  };
+
   const addVision = () => {
     if (!name.trim()) return;
     const newVision: Vision = {
       id: Date.now(),
       name: name.trim(),
-      longDef: (longDef || '').trim(), // ⬅️ grande zone de texte
+      longDef: (longDef || '').trim(),
       phase1Done: false,
     };
-    saveVisions([...(visions || []), newVision]);
+    const next = [...(visions || []), newVision];
+    saveVisions(next);
+
+    // ✅ Sélectionner automatiquement la nouvelle vision
+    openVision(newVision);
+
+    // reset formulaire
     setName('');
     setLongDef('');
   };
@@ -97,11 +105,6 @@ export default function VisionsPage() {
     if (selectedVision?.id === id) setSelectedVision(null);
   };
 
-  const openVision = (v: Vision) => {
-    setSelectedVision(v);
-    localStorage.setItem('currentVision', JSON.stringify(v));
-  };
-
   const goPhase1 = () => {
     if (!selectedVision) return;
     router.push('/phase1');
@@ -109,12 +112,11 @@ export default function VisionsPage() {
 
   const canGoPhase2 = !!selectedVision && !!selectedVision.phase1Done;
 
-  // util pour afficher un extrait court de la définition longue
   const snippet = (txt: string, len = 100) => {
     if (!txt) return '—';
     const t = txt.replace(/\s+/g, ' ').trim();
     return t.length > len ? t.slice(0, len) + '…' : t;
-  };
+    };
 
   return (
     <main style={{ padding: 40 }}>
