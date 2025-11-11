@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 interface Vision {
   id: number;
   name: string;
-  shortDef: string;
-  phase1Done?: boolean; // ✅ indicateur de validation Phase 1
+  longDef: string;       // ⬅️ définition longue (remplace shortDef)
+  phase1Done?: boolean;  // indicateur de validation Phase 1
+  // phase1 / phase2 restent inchangées si vous les avez déjà ajoutées ailleurs
 }
 
 export default function VisionsPage() {
@@ -15,8 +16,10 @@ export default function VisionsPage() {
   const [problem, setProblem] = useState<{ id: number; name: string } | null>(null);
   const [visions, setVisions] = useState<Vision[]>([]);
   const [selectedVision, setSelectedVision] = useState<Vision | null>(null);
+
+  // Formulaire création
   const [name, setName] = useState('');
-  const [shortDef, setShortDef] = useState('');
+  const [longDef, setLongDef] = useState(''); // ⬅️ textarea multi-lignes
 
   useEffect(() => {
     const saved = localStorage.getItem('currentProblem');
@@ -24,10 +27,44 @@ export default function VisionsPage() {
     const p = JSON.parse(saved);
     setProblem(p);
 
-    const allVisions = JSON.parse(localStorage.getItem('visions') || '{}');
-    setVisions(allVisions[p.id] || []);
+    // Charger les visions du problème
+    const allVisionsRaw = localStorage.getItem('visions');
+    const allVisions = allVisionsRaw ? JSON.parse(allVisionsRaw) : {};
+    const list: any[] = allVisions[p.id] || [];
+
+    // 🔁 Migration simple: si on trouve encore shortDef, on le bascule en longDef
+    const migrated: Vision[] = list.map(v => {
+      if (v && typeof v === 'object') {
+        const hasLong = typeof v.longDef === 'string';
+        const hasShort = typeof v.shortDef === 'string';
+        if (!hasLong && hasShort) {
+          return { ...v, longDef: v.shortDef, shortDef: undefined };
+        }
+      }
+      return v as Vision;
+    });
+
+    if (JSON.stringify(migrated) !== JSON.stringify(list)) {
+      // sauvegarder migration
+      allVisions[p.id] = migrated;
+      localStorage.setItem('visions', JSON.stringify(allVisions));
+    }
+    setVisions(migrated);
+
+    // Recharger la sélection courante si présente
     const cur = localStorage.getItem('currentVision');
-    if (cur) setSelectedVision(JSON.parse(cur));
+    if (cur) {
+      const v = JSON.parse(cur);
+      // s'assurer que currentVision a bien longDef (migration)
+      if (v && typeof v === 'object') {
+        if (typeof v.longDef !== 'string' && typeof v.shortDef === 'string') {
+          v.longDef = v.shortDef;
+          delete v.shortDef;
+          localStorage.setItem('currentVision', JSON.stringify(v));
+        }
+      }
+      setSelectedVision(v);
+    }
   }, [router]);
 
   const saveVisions = (list: Vision[]) => {
@@ -40,16 +77,24 @@ export default function VisionsPage() {
 
   const addVision = () => {
     if (!name.trim()) return;
-    const newVision: Vision = { id: Date.now(), name, shortDef, phase1Done: false };
-    saveVisions([...visions, newVision]);
-    setName(''); setShortDef('');
+    const newVision: Vision = {
+      id: Date.now(),
+      name: name.trim(),
+      longDef: (longDef || '').trim(), // ⬅️ grande zone de texte
+      phase1Done: false,
+    };
+    saveVisions([...(visions || []), newVision]);
+    setName('');
+    setLongDef('');
   };
 
   const deleteVision = (id: number) => {
     if (!confirm('Supprimer cette vision ?')) return;
-    saveVisions(visions.filter(v => v.id !== id));
+    const next = visions.filter(v => v.id !== id);
+    saveVisions(next);
     const cur = localStorage.getItem('currentVision');
     if (cur && JSON.parse(cur).id === id) localStorage.removeItem('currentVision');
+    if (selectedVision?.id === id) setSelectedVision(null);
   };
 
   const openVision = (v: Vision) => {
@@ -64,6 +109,13 @@ export default function VisionsPage() {
 
   const canGoPhase2 = !!selectedVision && !!selectedVision.phase1Done;
 
+  // util pour afficher un extrait court de la définition longue
+  const snippet = (txt: string, len = 100) => {
+    if (!txt) return '—';
+    const t = txt.replace(/\s+/g, ' ').trim();
+    return t.length > len ? t.slice(0, len) + '…' : t;
+  };
+
   return (
     <main style={{ padding: 40 }}>
       <nav style={{ marginBottom: 20 }}>
@@ -74,18 +126,23 @@ export default function VisionsPage() {
 
       <section style={{ marginTop: 20 }}>
         <h3>Ouvrir une vision existante</h3>
-        {visions.length === 0 && <p>Aucune vision pour ce problème.</p>}
-        {visions.map(v => (
-          <div key={v.id} style={{ marginBottom: 6 }}>
+        {(!visions || visions.length === 0) && <p>Aucune vision pour ce problème.</p>}
+        {visions?.map(v => (
+          <div key={v.id} style={{ marginBottom: 10 }}>
             <button onClick={() => openVision(v)} style={{ marginRight: 8 }}>
               Sélectionner
             </button>
-            <b>{v.name}</b> — {v.shortDef || 'pas de définition courte'}{' '}
-            <span style={{ color: v.phase1Done ? 'green' : 'gray' }}>
+            <b>{v.name}</b>
+            <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>
+              {snippet(v.longDef, 100)}
+            </div>
+            <div style={{ fontSize: 12, color: v.phase1Done ? 'green' : 'gray' }}>
               {v.phase1Done ? '• Phase 1 validée' : '• Phase 1 à faire'}
-            </span>{' '}
-            <button onClick={() => deleteVision(v.id)}
-              style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>
+            </div>
+            <button
+              onClick={() => deleteVision(v.id)}
+              style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer', marginTop: 4 }}
+            >
               Supprimer
             </button>
           </div>
@@ -97,15 +154,19 @@ export default function VisionsPage() {
       <section>
         <h3>Créer une nouvelle vision</h3>
         <input
-          placeholder="Nom de la vision"
+          placeholder="Nom de la vision (identification)"
           value={name}
           onChange={e => setName(e.target.value)}
           style={{ display: 'block', width: '100%', marginBottom: 8 }}
         />
-        <input
-          placeholder="Définition courte (1 ligne, optionnel)"
-          value={shortDef}
-          onChange={e => setShortDef(e.target.value)}
+        <label style={{ display: 'block', marginBottom: 6 }}>
+          Définition longue (plusieurs lignes) — votre représentation complète du problème
+        </label>
+        <textarea
+          placeholder="Décrivez librement et précisément (plusieurs dizaines de lignes possibles)…"
+          rows={12}
+          value={longDef}
+          onChange={e => setLongDef(e.target.value)}
           style={{ display: 'block', width: '100%', marginBottom: 8 }}
         />
         <button onClick={addVision}>Créer la vision</button>
