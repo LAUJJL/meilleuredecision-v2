@@ -1,499 +1,61 @@
-// app/phase1/page.tsx
-"use client";
+'use client';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  getState,
-  listPhases,
-  getPhase1,
-  ensurePhase1,
-  updatePhase1Draft,
-  validatePhase1,
-  TIME_UNITS,
-  type Phase1Spec,
-  type SliderKey,
-  clearSelection,
-} from "@/lib/rps_v3";
+interface Vision {
+  id: number;
+  name: string;
+  shortDef: string;
+  phase1Done?: boolean;
+}
 
-const DEFAULT_SPEC: Phase1Spec = {
-  stockName: "",
-  stockUnit: "",
-  timeUnit: "mois",
-  inflowName: "",
-  outflowName: "",
-  initialStockName: "",
-  initialStockValue: 100,
-  inflowValue: 10,
-  outflowValue: 8,
-  horizon: 60,
-  sliderKeys: [],
-  sliderMaxInflow: undefined,
-  sliderMaxOutflow: undefined,
-  sliderMaxInitial: undefined,
-  derivedFlowUnit: "",
-  derivedStockUnit: "",
-};
-
-const lsKeyMax = (visionId: string) => `rps:phase1:ymax:${visionId}`;
-const lsKeyMin = (visionId: string) => `rps:phase1:ymin:${visionId}`;
-
-export default function Phase1() {
-  const s = getState();
-  const project = s.projects.find(p => p.id === s.currentProjectId);
-  const vision  = s.sequences.find(r => r.id === s.currentSequenceId);
-
-  useEffect(() => { if (!project || !vision) window.location.href = "/projects"; }, [project, vision]);
-  useEffect(() => { if (vision) ensurePhase1(vision.id); }, [vision]);
-
-  const phases = useMemo(() => (vision ? listPhases(vision.id) : []), [vision]);
-  const p0 = phases.find(p => p.idx === 0);
-  const p1 = vision ? getPhase1(vision.id) : undefined;
-
-  const [spec, setSpec] = useState<Phase1Spec>(DEFAULT_SPEC);
-
-  // — Bornes Y choisies par le visiteur (persistées par vision)
-  const [yMax, setYMax] = useState<number | null>(null);
-  const [yMin, setYMin] = useState<number | null>(null);
-  const [yMaxInputTop, setYMaxInputTop] = useState<string>("");
-  const [yMinInputTop, setYMinInputTop] = useState<string>("");
-  const [yMaxInputChart, setYMaxInputChart] = useState<string>("");
-  const [yMinInputChart, setYMinInputChart] = useState<string>("");
+export default function Phase1Page() {
+  const router = useRouter();
+  const [problemId, setProblemId] = useState<number | null>(null);
+  const [vision, setVision] = useState<Vision | null>(null);
 
   useEffect(() => {
-    if (p1?.draft && !p1.lockedAt) {
-      try {
-        const parsed = JSON.parse(p1.draft) as Phase1Spec;
-        const merged = { ...DEFAULT_SPEC, ...parsed };
-        setSpec(merged);
-      } catch { setSpec(DEFAULT_SPEC); }
-    } else {
-      setSpec(DEFAULT_SPEC);
+    const p = localStorage.getItem('currentProblem');
+    const v = localStorage.getItem('currentVision');
+    if (!p || !v) { router.push('/visions'); return; }
+    setProblemId(JSON.parse(p).id);
+    setVision(JSON.parse(v));
+  }, [router]);
+
+  const validatePhase1 = () => {
+    if (!problemId || !vision) return;
+    // marquer phase1Done=true dans le stockage des visions
+    const all = JSON.parse(localStorage.getItem('visions') || '{}');
+    const list: Vision[] = all[problemId] || [];
+    const idx = list.findIndex(x => x.id === vision.id);
+    if (idx >= 0) {
+      list[idx] = { ...list[idx], phase1Done: true };
+      all[problemId] = list;
+      localStorage.setItem('visions', JSON.stringify(all));
+      localStorage.setItem('currentVision', JSON.stringify(list[idx]));
+      setVision(list[idx]);
+      alert('Phase 1 validée pour cette vision.');
     }
-  }, [p1?.draft, p1?.lockedAt]);
-
-  // Série (simulation)
-  const series = useMemo(() => {
-    const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
-    const arr: number[] = new Array(n + 1);
-    const init = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
-    const infl = Math.max(0, Number.isFinite(spec.inflowValue) ? spec.inflowValue : 0);
-    const out  = Math.max(0, Number.isFinite(spec.outflowValue) ? spec.outflowValue : 0);
-    arr[0] = init;
-    for (let t = 1; t <= n; t++) arr[t] = arr[t - 1] + (infl - out);
-    return arr;
-  }, [spec.initialStockValue, spec.inflowValue, spec.outflowValue, spec.horizon]);
-
-  // Par défaut (si rien saisi) : Max = max(100, 2×initial), Min = min(0, série min − petite marge)
-  const autoDefaults = useMemo(() => {
-    const init = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
-    const defMax = Math.max(100, init * 2);
-    const rawMin = Math.min(...(series.length ? series : [0]));
-    const pad = Math.max(1, Math.abs(defMax - rawMin) * 0.05);
-    const defMin = Math.min(0, rawMin - pad);
-    return { defMax, defMin };
-  }, [spec.initialStockValue, series]);
-
-  // Initialisation depuis localStorage (ou défauts)
-  useEffect(() => {
-    if (!vision) return;
-    const read = (k: string) => {
-      if (typeof window === "undefined") return null;
-      const v = window.localStorage.getItem(k);
-      if (v === null) return null;
-      const n = Number(v);
-      return Number.isFinite(n) ? n : null;
-    };
-    const maxSaved = read(lsKeyMax(vision.id));
-    const minSaved = read(lsKeyMin(vision.id));
-    const max = maxSaved ?? autoDefaults.defMax;
-    const min = minSaved ?? autoDefaults.defMin;
-
-    setYMax(max);
-    setYMin(min);
-    setYMaxInputTop(String(max));
-    setYMinInputTop(String(min));
-    setYMaxInputChart(String(max));
-    setYMinInputChart(String(min));
-  }, [vision?.id, autoDefaults.defMax, autoDefaults.defMin]);
-
-  if (!project || !vision || !p0 || !p1) return null;
-  const locked = !!p1.lockedAt;
-
-  const update = (patch: Partial<Phase1Spec>) => {
-    const next = { ...spec, ...patch };
-    next.derivedStockUnit = next.stockUnit || "";
-    next.derivedFlowUnit  = next.stockUnit ? `${next.stockUnit} / ${next.timeUnit}` : "";
-    setSpec(next);
-    updatePhase1Draft(next);
-  };
-
-  const initBounds = (sp: Phase1Spec) => ({
-    inflow:  Math.max(10, (sp.inflowValue  || 0) * 2),
-    outflow: Math.max(10, (sp.outflowValue || 0) * 2),
-    initial: Math.max(10, (sp.initialStockValue || 0) * 2),
-  });
-
-  const toggleSlider = (key: SliderKey) => {
-    const set = new Set(spec.sliderKeys);
-    const bounds = initBounds(spec);
-    const patch: Partial<Phase1Spec> = {};
-    if (set.has(key)) set.delete(key);
-    else if (set.size < 2) {
-      set.add(key);
-      if (key === "inflow"  && !spec.sliderMaxInflow)  patch.sliderMaxInflow  = bounds.inflow;
-      if (key === "outflow" && !spec.sliderMaxOutflow) patch.sliderMaxOutflow = bounds.outflow;
-      if (key === "initial" && !spec.sliderMaxInitial) patch.sliderMaxInitial = bounds.initial;
-    }
-    update({ sliderKeys: Array.from(set) as SliderKey[], ...patch });
-  };
-
-  const canValidate = () =>
-    !locked &&
-    spec.stockName.trim() &&
-    spec.stockUnit.trim() &&
-    spec.inflowName.trim() &&
-    spec.outflowName.trim() &&
-    spec.initialStockName.trim();
-
-  const onValidate = () => {
-    if (!canValidate()) return;
-    try { validatePhase1(); } catch {}
-    window.location.href = "/refinements";
-  };
-
-  const backToProjects = () => {
-    clearSelection();
-    window.location.href = "/projects";
-  };
-
-  // Appliquer (haut) et (graphe)
-  const persistBounds = (minVal: number, maxVal: number) => {
-    if (!vision) return;
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(lsKeyMax(vision.id), String(maxVal));
-      window.localStorage.setItem(lsKeyMin(vision.id), String(minVal));
-    }
-  };
-  const normalizePair = (minVal: number, maxVal: number) => {
-    if (!Number.isFinite(minVal) || !Number.isFinite(maxVal)) return null;
-    if (maxVal <= minVal) return { min: minVal, max: minVal + 1 }; // éviter min==max
-    return { min: minVal, max: maxVal };
-  };
-
-  const applyTop = () => {
-    const maxP = Number(String(yMaxInputTop).replace(",", "."));
-    const minP = Number(String(yMinInputTop).replace(",", "."));
-    const pair = normalizePair(minP, maxP);
-    if (!pair) return;
-    setYMax(pair.max); setYMin(pair.min);
-    setYMaxInputChart(String(pair.max)); setYMinInputChart(String(pair.min));
-    persistBounds(pair.min, pair.max);
-  };
-  const applyChart = () => {
-    const maxP = Number(String(yMaxInputChart).replace(",", "."));
-    const minP = Number(String(yMinInputChart).replace(",", "."));
-    const pair = normalizePair(minP, maxP);
-    if (!pair) return;
-    setYMax(pair.max); setYMin(pair.min);
-    setYMaxInputTop(String(pair.max)); setYMinInputTop(String(pair.min));
-    persistBounds(pair.min, pair.max);
   };
 
   return (
-    <main className="min-h-screen grid place-items-center p-6">
-      <div className="w-full max-w-4xl space-y-6">
-        <h1 className="text-xl font-semibold text-center">Phase 1 — Stock + flux constants</h1>
+    <main style={{ padding: 40 }}>
+      <nav style={{ marginBottom: 20 }}>
+        <Link href="/">Accueil</Link> → <Link href="/visions">Visions</Link> → <b>Phase 1</b>
+      </nav>
 
-        {/* Contexte */}
-        <div className="rounded-lg border p-3 bg-gray-50 text-sm space-y-1">
-          <div><span className="opacity-70">Problème :</span> {project.title}</div>
-          <div><span className="opacity-70">Vision :</span> {vision.title}</div>
-        </div>
+      <h2>Phase 1 — {vision?.name || 'vision non sélectionnée'}</h2>
+      <p>
+        Version minimaliste pour valider le flux. Ici, on mettra ensuite tes champs
+        (stock + flux constants, unités, sliders, borne max/min…).
+      </p>
 
-        {/* Mémo Phase 0 */}
-        <div className="rounded-lg border p-3 bg-white text-sm">
-          <div className="opacity-70 mb-1">Définition de la vision :</div>
-          <div className="whitespace-pre-wrap">{p0.content || "—"}</div>
-        </div>
-
-        {locked ? (
-          <LockedView content={p1.content} />
-        ) : (
-          <div className="space-y-6">
-            {/* 1) Paramètres + bornes Y (haut de page) */}
-            <section className="space-y-3">
-              <h2 className="text-lg font-medium">Paramètres textuels</h2>
-              <div className="grid gap-3">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <TextField label="Nom du stock" ph="Ex. Trésorerie" value={spec.stockName} onChange={v => update({ stockName: v })} />
-                  <div className="grid grid-cols-2 gap-2">
-                    <NumberInline label={`Min Y ${spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}`} value={yMinInputTop} onChange={setYMinInputTop} />
-                    <NumberInline label={`Max Y ${spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}`} value={yMaxInputTop} onChange={setYMaxInputTop} />
-                    <div className="col-span-2">
-                      <button className="px-2 py-1 border rounded text-sm" onClick={applyTop}>Appliquer ces bornes</button>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <TextField label="Unité du stock" ph="Ex. euros, habitants" value={spec.stockUnit} onChange={v => update({ stockUnit: v })} />
-                  <SelectField label="Unité de temps (pas du modèle)" value={spec.timeUnit} onChange={v => update({ timeUnit: v as any })} options={TIME_UNITS as unknown as string[]} />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <TextField label="Nom du flux d’entrée" ph="Ex. Recettes" value={spec.inflowName} onChange={v => update({ inflowName: v })} />
-                  <TextField label="Nom du flux de sortie" ph="Ex. Dépenses" value={spec.outflowName} onChange={v => update({ outflowName: v })} />
-                </div>
-
-                <TextField label="Nom du stock de départ" ph="Ex. Trésorerie initiale" value={spec.initialStockName} onChange={v => update({ initialStockName: v })} />
-              </div>
-            </section>
-
-            {/* 2) Valeurs numériques */}
-            <section className="space-y-3">
-              <h2 className="text-lg font-medium">Valeurs des constantes</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <NumberField label={`Valeur du stock de départ (${spec.initialStockName || "Stock de départ"})`} value={spec.initialStockValue} onChange={v => update({ initialStockValue: v })} />
-                <NumberField label={`Flux d’entrée constant (${spec.inflowName || "Entrée"})`} value={spec.inflowValue} min={0} onChange={v => update({ inflowValue: Math.max(0, v) })} />
-                <NumberField label={`Flux de sortie constant (${spec.outflowName || "Sortie"})`} value={spec.outflowValue} min={0} onChange={v => update({ outflowValue: Math.max(0, v) })} />
-                <NumberField label={`Horizon (nombre de ${spec.timeUnit}s)`} value={spec.horizon} min={1} max={720} step={1} onChange={v => update({ horizon: Math.max(1, Math.min(720, Math.round(v))) })} />
-              </div>
-              <div className="text-xs opacity-70">
-                Unités : flux = {spec.derivedFlowUnit || "—"} ; stock = {spec.derivedStockUnit || "—"}.
-              </div>
-            </section>
-
-            {/* 3) Sliders (optionnels, max 2) */}
-            <section className="space-y-2">
-              <h2 className="text-lg font-medium">Sliders (optionnels, max 2)</h2>
-              <div className="flex flex-wrap gap-3 text-sm">
-                <Check label={spec.inflowName || "Flux d’entrée"} checked={spec.sliderKeys.includes("inflow")} onChange={() => toggleSlider("inflow")} />
-                <Check label={spec.outflowName || "Flux de sortie"} checked={spec.sliderKeys.includes("outflow")} onChange={() => toggleSlider("outflow")} />
-                <Check label={spec.initialStockName || "Stock de départ"} checked={spec.sliderKeys.includes("initial")} onChange={() => toggleSlider("initial")} />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                {spec.sliderKeys.includes("inflow") && (
-                  <NumberField label="Max slider entrée" value={spec.sliderMaxInflow ?? 100}
-                    onChange={v => update({ sliderMaxInflow: Math.max(1, v) })} />
-                )}
-                {spec.sliderKeys.includes("outflow") && (
-                  <NumberField label="Max slider sortie" value={spec.sliderMaxOutflow ?? 100}
-                    onChange={v => update({ sliderMaxOutflow: Math.max(1, v) })} />
-                )}
-                {spec.sliderKeys.includes("initial") && (
-                  <NumberField label="Max slider stock départ" value={spec.sliderMaxInitial ?? 100}
-                    onChange={v => update({ sliderMaxInitial: Math.max(1, v) })} />
-                )}
-              </div>
-
-              <div className="grid gap-3">
-                {spec.sliderKeys.includes("inflow") && (
-                  <RangeField label={`Slider ${spec.inflowName || "Entrée"} (${spec.derivedFlowUnit || "—"})`}
-                    value={spec.inflowValue} min={0}
-                    max={spec.sliderMaxInflow ?? 100}
-                    step={Math.max(1, Math.round((spec.sliderMaxInflow ?? 100) / 50))}
-                    onChange={v => update({ inflowValue: v })} />
-                )}
-                {spec.sliderKeys.includes("outflow") && (
-                  <RangeField label={`Slider ${spec.outflowName || "Sortie"} (${spec.derivedFlowUnit || "—"})`}
-                    value={spec.outflowValue} min={0}
-                    max={spec.sliderMaxOutflow ?? 100}
-                    step={Math.max(1, Math.round((spec.sliderMaxOutflow ?? 100) / 50))}
-                    onChange={v => update({ outflowValue: v })} />
-                )}
-                {spec.sliderKeys.includes("initial") && (
-                  <RangeField label={`Slider ${spec.initialStockName || "Stock de départ"} (${spec.derivedStockUnit || "—"})`}
-                    value={spec.initialStockValue} min={0}
-                    max={spec.sliderMaxInitial ?? 100}
-                    step={Math.max(1, Math.round((spec.sliderMaxInitial ?? 100) / 50))}
-                    onChange={v => update({ initialStockValue: v })} />
-                )}
-              </div>
-            </section>
-
-            {/* 4) Graphique + bornes rappelées/éditables */}
-            <section className="space-y-3">
-              <div className="flex flex-wrap items-center gap-3 text-sm">
-                <label className="inline-flex items-center gap-2">
-                  <span className="opacity-70">Min Y {spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}</span>
-                  <input className="w-28 border rounded p-1" type="number" step="any" value={yMinInputChart} onChange={e => setYMinInputChart(e.target.value)} />
-                </label>
-                <label className="inline-flex items-center gap-2">
-                  <span className="opacity-70">Max Y {spec.derivedStockUnit ? `(${spec.derivedStockUnit})` : ""}</span>
-                  <input className="w-28 border rounded p-1" type="number" step="any" value={yMaxInputChart} onChange={e => setYMaxInputChart(e.target.value)} />
-                </label>
-                <button className="px-2 py-1 border rounded" onClick={applyChart}>Appliquer</button>
-                {(yMin !== null && yMax !== null) && (
-                  <span className="opacity-60 text-xs">[actuel : {Math.round(yMin * 100) / 100} → {Math.round(yMax * 100) / 100}]</span>
-                )}
-              </div>
-
-              <h2 className="text-lg font-medium">Graphique du {spec.stockName || "stock"}</h2>
-              <MiniChart
-                series={series}
-                unitY={spec.derivedStockUnit || ""}
-                unitX={spec.timeUnit}
-                yMin={(yMin ?? autoDefaults.defMin)}
-                yMax={(yMax ?? autoDefaults.defMax)}
-              />
-            </section>
-
-            <div className="flex gap-3">
-              <a href="/refinements" className="px-4 py-2 rounded-lg border">Visions</a>
-              <button className={`px-4 py-2 rounded-lg border ${canValidate() ? "" : "opacity-50 cursor-not-allowed"}`} onClick={onValidate} disabled={!canValidate()}>
-                Valider & Continuer
-              </button>
-              <button className="px-4 py-2 rounded-lg border" onClick={backToProjects}>
-                Choisir / créer un autre problème
-              </button>
-            </div>
-          </div>
-        )}
+      <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+        <button onClick={validatePhase1}>Valider la phase 1</button>
+        <button onClick={() => router.push('/visions')}>← Revenir aux visions</button>
+        <Link href="/">Accueil</Link>
       </div>
     </main>
-  );
-}
-
-/* — Composants — */
-function TextField({ label, ph, value, onChange }: { label: string; ph?: string; value: string; onChange: (v: string) => void; }) {
-  return (
-    <label className="block">
-      <span className="text-sm">{label}</span>
-      <input className="mt-1 w-full border rounded-lg p-2" placeholder={ph} value={value} onChange={e => onChange(e.target.value)} />
-    </label>
-  );
-}
-function NumberInline({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void; }) {
-  return (
-    <label className="block">
-      <span className="text-sm">{label}</span>
-      <input className="mt-1 w-full border rounded-lg p-2" value={value} onChange={e => onChange(e.target.value)} />
-    </label>
-  );
-}
-function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[]; }) {
-  return (
-    <label className="block">
-      <span className="text-sm">{label}</span>
-      <select className="mt-1 w-full border rounded-lg p-2" value={value} onChange={e => onChange(e.target.value)}>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </label>
-  );
-}
-function NumberField({ label, value, onChange, min, max, step }: { label: string; value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; }) {
-  return (
-    <label className="block">
-      <span className="text-sm">{label}</span>
-      <input type="number" className="mt-1 w-full border rounded-lg p-2" value={String(value)} min={min} max={max} step={step ?? 1} onChange={e => onChange(Number(e.target.value))} />
-    </label>
-  );
-}
-function Check({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void; }) {
-  return (
-    <label className="inline-flex items-center gap-2">
-      <input type="checkbox" checked={checked} onChange={onChange} />
-      {label}
-    </label>
-  );
-}
-function RangeField({ label, value, onChange, min, max, step }: { label: string; value: number; onChange: (v: number) => void; min: number; max: number; step: number; }) {
-  return (
-    <label className="block">
-      <div className="flex justify-between text-sm">
-        <span>{label}</span>
-        <span className="opacity-70">{Math.round(value * 1000) / 1000}</span>
-      </div>
-      <input type="range" className="w-full" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))} />
-      <div className="flex justify-between text-xs opacity-60"><span>{min}</span><span>{max}</span></div>
-    </label>
-  );
-}
-
-/* — Mini graphe : bornes Y fixées par l’utilisateur (négatif autorisé) — */
-function MiniChart({
-  series,
-  unitY,
-  unitX,
-  yMin,
-  yMax,
-}: {
-  series: number[];
-  unitY: string;
-  unitX: string;
-  yMin: number;
-  yMax: number;
-}) {
-  const W = 640, H = 260, PAD = 40;
-  const safe = (series && series.length >= 2) ? series : [0, 0];
-
-  let minY = yMin;
-  let maxY = yMax;
-  if (maxY <= minY) { maxY = minY + 1; } // garde-fou
-
-  const toX = (i: number) => PAD + (i * (W - 2 * PAD)) / (safe.length - 1 || 1);
-  const toY = (v: number) => H - PAD - ((v - minY) * (H - 2 * PAD)) / (maxY - minY || 1);
-  const d = safe.map((v, i) => `${i === 0 ? "M" : "L"} ${toX(i)},${toY(v)}`).join(" ");
-  const yMid = (minY + maxY) / 2;
-  const pathKey = `${safe[0]}-${safe[safe.length - 1]}-${safe.length}-${minY}-${maxY}`;
-
-  return (
-    <svg width={W} height={H} className="border rounded-lg bg-white">
-      <line x1={PAD} y1={H-PAD} x2={W-PAD} y2={H-PAD} stroke="#ccc" />
-      <line x1={PAD} y1={PAD}   x2={PAD}   y2={H-PAD} stroke="#ccc" />
-
-      {[minY, yMid, maxY].map((v, idx) => (
-        <g key={idx}>
-          <line x1={PAD-4} y1={toY(v)} x2={W-PAD} y2={toY(v)} stroke="#eee" />
-          <text x={8} y={toY(v)+4} fontSize="10" fill="#666">{Math.round(v*100)/100}</text>
-        </g>
-      ))}
-
-      <path key={pathKey} d={d} fill="none" stroke="#222" strokeWidth={2} />
-
-      <text x={W/2} y={H-8} fontSize="11" fill="#666" textAnchor="middle">{unitX}</text>
-      <text x={12} y={14} fontSize="11" fill="#666">{unitY}</text>
-    </svg>
-  );
-}
-
-function LockedView({ content }: { content?: string; }) {
-  let spec: Phase1Spec = DEFAULT_SPEC;
-  try { if (content) spec = { ...DEFAULT_SPEC, ...(JSON.parse(content) as Phase1Spec) }; } catch {}
-  const series = (() => {
-    const n = Math.max(1, Math.min(720, Math.round(Number(spec.horizon) || 0)));
-    const arr: number[] = new Array(n + 1);
-    arr[0] = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
-    const infl = Math.max(0, Number.isFinite(spec.inflowValue) ? spec.inflowValue : 0);
-    const out  = Math.max(0, Number.isFinite(spec.outflowValue) ? spec.outflowValue : 0);
-    for (let t = 1; t <= n; t++) arr[t] = arr[t-1] + (infl - out);
-    return arr;
-  })();
-
-  // Lecture seule : bornes simples par défaut
-  const init = Number.isFinite(spec.initialStockValue) ? spec.initialStockValue : 0;
-  const defMax = Math.max(100, init * 2);
-  const rawMin = Math.min(...(series.length ? series : [0]));
-  const pad = Math.max(1, Math.abs(defMax - rawMin) * 0.05);
-  const defMin = Math.min(0, rawMin - pad);
-
-  return (
-    <div className="space-y-4">
-      <div className="text-sm opacity-70">Cette phase est validée (lecture seule).</div>
-      <div className="rounded-lg border p-3 bg-white text-sm">
-        <div className="font-medium mb-2">Spécification Phase 1</div>
-        <ul className="list-disc pl-5 space-y-1">
-          <li><strong>Stock</strong> : {spec.stockName} ({spec.derivedStockUnit || "—"})</li>
-          <li><strong>Flux d’entrée</strong> : {spec.inflowName} ({spec.derivedFlowUnit || "—"}) = {spec.inflowValue}</li>
-          <li><strong>Flux de sortie</strong> : {spec.outflowName} ({spec.derivedFlowUnit || "—"}) = {spec.outflowValue}</li>
-          <li><strong>Stock de départ</strong> : {spec.initialStockName} ({spec.derivedStockUnit || "—"}) = {spec.initialStockValue}</li>
-          <li><strong>Unité de temps</strong> : {spec.timeUnit}</li>
-          <li><strong>Horizon</strong> : {spec.horizon}</li>
-          <li><strong>Sliders</strong> : {spec.sliderKeys.join(", ") || "aucun"}</li>
-        </ul>
-      </div>
-      <MiniChart series={series} unitY={spec.derivedStockUnit || ""} unitX={spec.timeUnit} yMin={defMin} yMax={defMax} />
-    </div>
   );
 }
