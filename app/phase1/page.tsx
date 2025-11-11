@@ -24,6 +24,13 @@ type Vision = {
   };
 };
 
+// Parsing “souple” : autorise '', '-' pendant la saisie
+const toNumber = (s: string, fallback = 0) => {
+  if (s === '' || s === '-' || s === '+') return fallback;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : fallback;
+};
+
 export default function Phase1Page() {
   const router = useRouter();
   const [problemId, setProblemId] = useState<number | null>(null);
@@ -41,18 +48,22 @@ export default function Phase1Page() {
     setVision(JSON.parse(v));
   }, [router]);
 
-  // --- 2) État du formulaire (avec valeurs par défaut raisonnables) ---
+  // --- 2) État du formulaire (strings pour éviter le “0 collant”) ---
   const [stockName, setStockName] = useState('Stock');
   const [stockUnit, setStockUnit] = useState('€');
   const [timeUnit, setTimeUnit] = useState<'year' | 'month' | 'week' | 'day'>('month');
-  const [horizon, setHorizon] = useState(12);
-  const [initialStock, setInitialStock] = useState(1000);
+
+  const [horizonStr, setHorizonStr] = useState('12');
+  const [initialStockStr, setInitialStockStr] = useState('1000');
+
   const [inflowName, setInflowName] = useState('Recettes');
-  const [inflowConstant, setInflowConstant] = useState(200);
+  const [inflowConstantStr, setInflowConstantStr] = useState('200');
+
   const [outflowName, setOutflowName] = useState('Dépenses');
-  const [outflowConstant, setOutflowConstant] = useState(150);
-  const [yMin, setYMin] = useState(0);
-  const [yMax, setYMax] = useState(3000);
+  const [outflowConstantStr, setOutflowConstantStr] = useState('150');
+
+  const [yMinStr, setYMinStr] = useState('0');
+  const [yMaxStr, setYMaxStr] = useState('3000');
 
   // Charger d’éventuelles valeurs déjà saisies
   useEffect(() => {
@@ -61,36 +72,53 @@ export default function Phase1Page() {
     setStockName(p1.stockName);
     setStockUnit(p1.stockUnit);
     setTimeUnit(p1.timeUnit);
-    setHorizon(p1.horizon);
-    setInitialStock(p1.initialStock);
+    setHorizonStr(String(p1.horizon));
+    setInitialStockStr(String(p1.initialStock));
     setInflowName(p1.inflowName);
-    setInflowConstant(p1.inflowConstant);
+    setInflowConstantStr(String(p1.inflowConstant));
     setOutflowName(p1.outflowName);
-    setOutflowConstant(p1.outflowConstant);
-    setYMin(p1.yMin);
-    setYMax(p1.yMax);
+    setOutflowConstantStr(String(p1.outflowConstant));
+    setYMinStr(String(p1.yMin));
+    setYMaxStr(String(p1.yMax));
   }, [vision?.phase1]);
 
-  // --- 3) Simulation simple (stock(t+1) = stock(t) + (inflow - outflow)) ---
+  // --- 3) Conversion numérique pour calcul/schéma ---
+  const horizon = Math.max(1, Math.min(500, Math.floor(toNumber(horizonStr, 1))));
+  const initialStock = toNumber(initialStockStr, 0);
+  const inflowConstant = toNumber(inflowConstantStr, 0);
+  const outflowConstant = toNumber(outflowConstantStr, 0);
+  const yMin = toNumber(yMinStr, 0);
+  const yMax = toNumber(yMaxStr, 1);
+
+  // --- 4) Simulation simple ---
   const series = useMemo(() => {
-    const n = Math.max(1, Math.min(500, Math.floor(horizon))); // borne de sécurité
-    const s: number[] = new Array(n + 1);
-    s[0] = Number(initialStock) || 0;
-    const delta = (Number(inflowConstant) || 0) - (Number(outflowConstant) || 0);
-    for (let t = 0; t < n; t++) s[t + 1] = s[t] + delta;
+    const n = Math.max(1, Math.min(500, horizon));
+    const s: number[] = [];
+    s.push(initialStock);
+    const delta = inflowConstant - outflowConstant;
+    let stop = false;
+
+    for (let t = 0; t < n; t++) {
+      if (stop) break;
+      const next = (s[s.length - 1] ?? initialStock) + delta;
+      // si on dépasse la fenêtre [yMin, yMax], on STOPPE la courbe
+      if (next > Math.max(yMax, yMin) || next < Math.min(yMin, yMax)) {
+        // on arrête sans ajouter ce point
+        break;
+      }
+      s.push(next);
+    }
     return s;
-  }, [horizon, initialStock, inflowConstant, outflowConstant]);
+  }, [horizon, initialStock, inflowConstant, outflowConstant, yMin, yMax]);
 
   const ticks = useMemo(() => {
     const n = Math.min(series.length - 1, 24);
     const labels: string[] = [];
-    for (let t = 0; t <= n; t++) {
-      labels.push(String(t));
-    }
+    for (let t = 0; t <= n; t++) labels.push(String(t));
     return labels;
   }, [series.length]);
 
-  // --- 4) SVG Chart minimaliste ---
+  // --- 5) SVG Chart minimaliste (stop quand hors cadre) ---
   const Chart = () => {
     const W = 640;
     const H = 280;
@@ -98,12 +126,13 @@ export default function Phase1Page() {
 
     const n = series.length - 1;
     const xFor = (t: number) => {
-      if (n === 0) return PAD;
+      if (n <= 0) return PAD;
       return PAD + (t / n) * (W - 2 * PAD);
     };
 
-    const yMinSafe = Math.min(yMin, yMax - 1); // éviter yMin >= yMax
-    const yMaxSafe = Math.max(yMax, yMin + 1);
+    // Sécurise l'ordre min/max sans empêcher min négatif
+    const yMinSafe = Math.min(yMin, yMax - 1e-9);
+    const yMaxSafe = Math.max(yMax, yMin + 1e-9);
 
     const yFor = (val: number) => {
       const a = (val - yMinSafe) / (yMaxSafe - yMinSafe);
@@ -111,15 +140,16 @@ export default function Phase1Page() {
       return Math.max(PAD, Math.min(H - PAD, y));
     };
 
-    // Trajectoire
     let d = '';
-    series.forEach((val, t) => {
+    for (let t = 0; t < series.length; t++) {
+      const val = series[t];
+      // si le point actuel est hors cadre, on arrête (pas de tracé au-delà)
+      if (val > yMaxSafe || val < yMinSafe) break;
       const x = xFor(t);
       const y = yFor(val);
       d += t === 0 ? `M ${x} ${y}` : ` L ${x} ${y}`;
-    });
+    }
 
-    // Axes
     return (
       <svg width={W} height={H} style={{ border: '1px solid #e5e7eb', borderRadius: 8, background: '#fff' }}>
         {/* Axes */}
@@ -130,9 +160,11 @@ export default function Phase1Page() {
         <text x={4} y={yFor(yMaxSafe)} fontSize="10" fill="#555">{yMaxSafe.toFixed(0)} {stockUnit}</text>
         <text x={4} y={yFor(yMinSafe)} fontSize="10" fill="#555">{yMinSafe.toFixed(0)} {stockUnit}</text>
 
-        {/* Graduation X (quelques ticks) */}
+        {/* Graduation X */}
         {ticks.map((lab, i) => {
-          const t = i * Math.max(1, Math.floor((series.length - 1) / Math.max(1, ticks.length - 1)));
+          const denom = Math.max(1, ticks.length - 1);
+          const step = Math.max(1, Math.floor((series.length - 1) / denom));
+          const t = Math.min(series.length - 1, i * step);
           const x = xFor(t);
           return (
             <g key={i}>
@@ -142,13 +174,13 @@ export default function Phase1Page() {
           );
         })}
 
-        {/* courbe */}
-        <path d={d} fill="none" stroke="#2563eb" strokeWidth={2} />
+        {/* courbe (arrêtée si sortie du cadre) */}
+        {d && <path d={d} fill="none" stroke="#2563eb" strokeWidth={2} />}
       </svg>
     );
   };
 
-  // --- 5) Sauvegarde Phase 1 + validation ---
+  // --- 6) Sauvegarde Phase 1 + validation ---
   const savePhase1 = (markDone: boolean) => {
     if (!problemId || !vision) return;
     const all = JSON.parse(localStorage.getItem('visions') || '{}') as Record<number, Vision[]>;
@@ -163,14 +195,14 @@ export default function Phase1Page() {
         stockName: stockName.trim() || 'Stock',
         stockUnit: stockUnit.trim() || '€',
         timeUnit,
-        horizon: Math.max(1, Math.min(500, Math.floor(horizon))),
-        initialStock: Number(initialStock) || 0,
+        horizon,
+        initialStock,
         inflowName: inflowName.trim() || 'Recettes',
-        inflowConstant: Number(inflowConstant) || 0,
+        inflowConstant,
         outflowName: outflowName.trim() || 'Dépenses',
-        outflowConstant: Number(outflowConstant) || 0,
-        yMin: Number(yMin),
-        yMax: Number(yMax),
+        outflowConstant,
+        yMin,
+        yMax,
       },
     };
 
@@ -226,22 +258,24 @@ export default function Phase1Page() {
         <div>
           <label>Horizon (nombre de {timeUnitLabel[timeUnit]}s)</label>
           <input
-            type="number"
-            min={1}
-            max={500}
-            value={horizon}
-            onChange={e => setHorizon(Number(e.target.value))}
+            type="text"
+            inputMode="numeric"
+            value={horizonStr}
+            onChange={e => setHorizonStr(e.target.value)}
             style={{ width: '100%' }}
+            placeholder="ex: 12"
           />
         </div>
 
         <div>
           <label>Valeur initiale du stock</label>
           <input
-            type="number"
-            value={initialStock}
-            onChange={e => setInitialStock(Number(e.target.value))}
+            type="text"
+            inputMode="decimal"
+            value={initialStockStr}
+            onChange={e => setInitialStockStr(e.target.value)}
             style={{ width: '100%' }}
+            placeholder="ex: 1000"
           />
         </div>
         <div></div>
@@ -253,10 +287,12 @@ export default function Phase1Page() {
         <div>
           <label>Constante d’entrée ({stockUnit}/{timeUnitLabel[timeUnit]})</label>
           <input
-            type="number"
-            value={inflowConstant}
-            onChange={e => setInflowConstant(Number(e.target.value))}
+            type="text"
+            inputMode="decimal"
+            value={inflowConstantStr}
+            onChange={e => setInflowConstantStr(e.target.value)}
             style={{ width: '100%' }}
+            placeholder="ex: 200"
           />
         </div>
 
@@ -267,10 +303,12 @@ export default function Phase1Page() {
         <div>
           <label>Constante de sortie ({stockUnit}/{timeUnitLabel[timeUnit]})</label>
           <input
-            type="number"
-            value={outflowConstant}
-            onChange={e => setOutflowConstant(Number(e.target.value))}
+            type="text"
+            inputMode="decimal"
+            value={outflowConstantStr}
+            onChange={e => setOutflowConstantStr(e.target.value)}
             style={{ width: '100%' }}
+            placeholder="ex: 150"
           />
         </div>
       </section>
@@ -287,11 +325,25 @@ export default function Phase1Page() {
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', margin: '8px 0 12px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             Y min
-            <input type="number" value={yMin} onChange={e => setYMin(Number(e.target.value))} style={{ width: 120 }} />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={yMinStr}
+              onChange={e => setYMinStr(e.target.value)}
+              style={{ width: 120 }}
+              placeholder="ex: -500"
+            />
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             Y max
-            <input type="number" value={yMax} onChange={e => setYMax(Number(e.target.value))} style={{ width: 120 }} />
+            <input
+              type="text"
+              inputMode="decimal"
+              value={yMaxStr}
+              onChange={e => setYMaxStr(e.target.value)}
+              style={{ width: 120 }}
+              placeholder="ex: 3000"
+            />
           </label>
         </div>
 
