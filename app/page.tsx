@@ -25,14 +25,9 @@ export default function HomePage() {
 
   const addProblem = () => {
     if (!name.trim()) return;
-    const newProblem: Problem = {
-      id: Date.now(),
-      name,
-      shortDef
-    };
+    const newProblem: Problem = { id: Date.now(), name, shortDef };
     save([...problems, newProblem]);
-    setName('');
-    setShortDef('');
+    setName(''); setShortDef('');
   };
 
   const deleteProblem = (id: number) => {
@@ -52,10 +47,13 @@ export default function HomePage() {
         <h3>Ouvrir un problème existant</h3>
         {problems.length === 0 && <p>Aucun problème pour l’instant.</p>}
         {problems.map(p => (
-          <div key={p.id}>
+          <div key={p.id} style={{ marginBottom: 6 }}>
             <b>{p.name}</b> — {p.shortDef || 'pas de définition courte'}{' '}
-            <Link href="/visions" onClick={() => selectProblem(p)}>Ouvrir</Link>{' '}
-            <button onClick={() => deleteProblem(p.id)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>
+            <Link href="/visions" onClick={() => selectProblem(p)}>
+              <u>Créer / Ouvrir les visions</u>
+            </Link>{' '}
+            <button onClick={() => deleteProblem(p.id)}
+              style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}>
               Supprimer
             </button>
           </div>
@@ -83,7 +81,7 @@ export default function HomePage() {
 
       <button
         onClick={() => {
-          if (confirm('Réinitialiser la sélection et tout effacer ?')) {
+          if (confirm('Tout effacer (problèmes/visions/sélections) ?')) {
             localStorage.clear();
             setProblems([]);
           }
