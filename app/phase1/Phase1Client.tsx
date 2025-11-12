@@ -2,18 +2,17 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-// importez ici vos autres hooks/états/composants UI
 
 export default function Phase1Client() {
-  const searchParams = useSearchParams();
-
-  // ⚠️ Placez ici tout le code UI/logic que vous aviez dans page.tsx,
-  // y compris la lecture des query params via searchParams.get("..."),
-  // les formulaires, boutons, etc.
+  // ✔️ C’est ici (dans un composant client) que vous pouvez utiliser useSearchParams
+  const sp = useSearchParams();
+  const debugVision = sp.get("vision") ?? "(aucune vision dans l’URL)";
 
   return (
-    <div>
-      {/* votre UI Phase 1 */}
+    <div style={{ padding: 16 }}>
+      <h1>Phase 1 (test minimal)</h1>
+      <p>Vision (depuis l’URL) : {debugVision}</p>
+      {/* Remettre VOTRE UI/logic ici après que le build passe */}
     </div>
   );
 }
