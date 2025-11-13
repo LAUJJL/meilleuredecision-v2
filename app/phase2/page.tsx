@@ -1,33 +1,38 @@
-'use client';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+// app/phase2/page.tsx
+
+import Link from "next/link";
 
 export default function Phase2Page() {
-  const router = useRouter();
-  const [vision, setVision] = useState<{ id: number; name: string; phase1Done?: boolean } | null>(null);
-
-  useEffect(() => {
-    const v = localStorage.getItem('currentVision');
-    if (!v) { router.push('/visions'); return; }
-    const parsed = JSON.parse(v);
-    setVision(parsed);
-    // Sécurité : pas d’accès si Phase 1 non validée
-    if (!parsed.phase1Done) router.push('/phase1');
-  }, [router]);
-
   return (
-    <main style={{ padding: 40 }}>
-      <nav style={{ marginBottom: 20 }}>
-        <Link href="/">Accueil</Link> → <Link href="/visions">Visions</Link> → <b>Phase 2</b>
-      </nav>
+    <main
+      style={{
+        padding: 32,
+        maxWidth: 800,
+        margin: "0 auto",
+        fontFamily: "system-ui, sans-serif",
+      }}
+    >
+      <h1>Phase 2 — placeholder</h1>
 
-      <h2>Phase 2 — {vision?.name || 'aucune vision sélectionnée'}</h2>
-      <p>Contenu de la Phase 2 (à compléter : modèle, graphiques, etc.).</p>
+      <p style={{ marginTop: 16 }}>
+        Cette page est pour l’instant une simple coquille vide. Nous y
+        construirons plus tard la vraie Phase&nbsp;2, une fois que la Phase&nbsp;1 sera
+        entièrement définie et stable.
+      </p>
 
-      <div style={{ marginTop: 20 }}>
-        <button onClick={() => router.push('/visions')}>← Revenir aux visions</button>{' '}
-        <Link href="/">Accueil</Link>
+      <div style={{ marginTop: 32 }}>
+        <Link
+          href="/phase1"
+          style={{
+            padding: "10px 14px",
+            borderRadius: 6,
+            border: "1px solid #ccc",
+            textDecoration: "none",
+            display: "inline-block",
+          }}
+        >
+          ← Revenir à la phase 1
+        </Link>
       </div>
     </main>
   );
