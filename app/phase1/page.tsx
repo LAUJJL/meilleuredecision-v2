@@ -1,77 +1,83 @@
 // app/phase1/page.tsx
-
-import Link from "next/link";
-
 export default function Phase1Page() {
   return (
     <main
       style={{
-        padding: 32,
-        maxWidth: 800,
+        fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
+        padding: "2rem",
+        maxWidth: "800px",
         margin: "0 auto",
-        fontFamily: "system-ui, sans-serif",
+        lineHeight: 1.5,
       }}
     >
-      <h1>Phase 1 — maquette minimale</h1>
+      <h1 style={{ fontSize: "1.5rem", marginBottom: "0.5rem" }}>
+        Phase 1 — maquette simple
+      </h1>
 
-      <p style={{ marginTop: 16 }}>
-        Cette page est volontairement simplifiée : elle ne contient que les
-        boutons de navigation. Le contenu réel de la phase&nbsp;1
-        (stock, flux, graphique, etc.) sera ajouté dans un deuxième temps.
+      <p style={{ marginBottom: "1rem" }}>
+        Pour l’instant, cette page est <strong>volontairement minimaliste</strong>.
+        Elle sert uniquement à tester la navigation entre :
+      </p>
+
+      <ul style={{ marginBottom: "1.5rem" }}>
+        <li>la page du problème,</li>
+        <li>la page des visions,</li>
+        <li>et la Phase 2.</li>
+      </ul>
+
+      <p style={{ marginBottom: "1.5rem" }}>
+        Ensuite, nous remettrons progressivement le contenu réel de la Phase 1
+        (stock, flux, graphe…) de façon contrôlée.
       </p>
 
       <div
         style={{
-          marginTop: 40,
           display: "flex",
           flexDirection: "column",
-          gap: 12,
+          gap: "0.75rem",
+          marginTop: "1.5rem",
         }}
       >
-        {/* Bouton : revenir à la vision */}
-        <Link
-          href="/visions"
-          style={{
-            padding: "10px 14px",
-            borderRadius: 6,
-            border: "1px solid #ccc",
-            textDecoration: "none",
-            display: "inline-block",
-          }}
-        >
-          ← Revenir à la vision
-        </Link>
-
-        {/* Bouton : revenir au problème */}
-        <Link
+        <a
           href="/"
           style={{
-            padding: "10px 14px",
-            borderRadius: 6,
+            padding: "0.6rem 1rem",
+            borderRadius: "6px",
             border: "1px solid #ccc",
             textDecoration: "none",
             display: "inline-block",
           }}
         >
           ← Revenir au problème
-        </Link>
+        </a>
 
-        {/* Bouton : valider la phase 1 et aller vers une phase 2 fictive */}
-        <Link
+        <a
+          href="/visions"
+          style={{
+            padding: "0.6rem 1rem",
+            borderRadius: "6px",
+            border: "1px solid #ccc",
+            textDecoration: "none",
+            display: "inline-block",
+          }}
+        >
+          ← Revenir à la vision
+        </a>
+
+        <a
           href="/phase2"
           style={{
-            padding: "10px 14px",
-            borderRadius: 6,
-            border: "1px solid #0066cc",
-            backgroundColor: "#0066cc",
+            padding: "0.6rem 1rem",
+            borderRadius: "6px",
+            border: "1px solid #0070f3",
+            background: "#0070f3",
             color: "white",
             textDecoration: "none",
             display: "inline-block",
-            marginTop: 8,
           }}
         >
-          Valider la phase 1 et passer à la phase 2
-        </Link>
+          Passer à la Phase 2
+        </a>
       </div>
     </main>
   );
