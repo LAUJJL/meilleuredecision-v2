@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 type Vision = {
   id: string;
@@ -13,14 +13,12 @@ function storageKey(problemName: string) {
   return `md_visions_v1_${problemName}`;
 }
 
-export default function VisionsClient({
-  problemName,
-  problemShort,
-}: {
-  problemName: string;
-  problemShort: string;
-}) {
+export default function VisionsClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const problemName = searchParams.get("problemName") ?? "";
+  const problemShort = searchParams.get("problemShort") ?? "";
 
   const [visions, setVisions] = useState<Vision[]>([]);
   const [newName, setNewName] = useState("");
@@ -45,7 +43,10 @@ export default function VisionsClient({
   useEffect(() => {
     if (!problemName || typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(storageKey(problemName), JSON.stringify(visions));
+      window.localStorage.setItem(
+        storageKey(problemName),
+        JSON.stringify(visions)
+      );
     } catch (e) {
       console.error("Erreur d’enregistrement des visions :", e);
     }
