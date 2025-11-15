@@ -3,14 +3,9 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Refinement = {
-  id: string;
-  text: string;
-};
-
 type VisionDetails = {
   longDef: string;
-  refinements: Refinement[];
+  phase1Started?: boolean;
 };
 
 function storageKey(visionId: string) {
@@ -20,19 +15,18 @@ function storageKey(visionId: string) {
 export default function VisionClient() {
   const router = useRouter();
 
-  // Infos contexte problème + vision
+  // Contexte : problème + vision
   const [problemName, setProblemName] = useState("");
   const [problemShort, setProblemShort] = useState("");
   const [visionId, setVisionId] = useState("");
   const [visionName, setVisionName] = useState("");
   const [visionShort, setVisionShort] = useState("");
 
-  // Contenu de la vision
+  // Contenu de la définition initiale
   const [longDef, setLongDef] = useState("");
-  const [refinements, setRefinements] = useState<Refinement[]>([]);
-  const [newRefText, setNewRefText] = useState("");
+  const [phase1Started, setPhase1Started] = useState(false);
 
-  // 1) Lire les paramètres d’URL et charger les détails de la vision
+  // Lecture des paramètres d’URL + chargement éventuel dans localStorage
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -55,53 +49,33 @@ export default function VisionClient() {
     try {
       const raw = window.localStorage.getItem(storageKey(vId));
       if (!raw) return;
-
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        if (typeof parsed.longDef === "string") {
-          setLongDef(parsed.longDef);
-        }
-        if (Array.isArray(parsed.refinements)) {
-          setRefinements(parsed.refinements);
-        }
+      const parsed = JSON.parse(raw) as Partial<VisionDetails>;
+      if (parsed.longDef && typeof parsed.longDef === "string") {
+        setLongDef(parsed.longDef);
+      }
+      if (typeof parsed.phase1Started === "boolean") {
+        setPhase1Started(parsed.phase1Started);
       }
     } catch (e) {
-      console.error("Erreur de lecture des détails de la vision :", e);
+      console.error("Erreur de lecture de la définition initiale :", e);
     }
   }, []);
 
-  // 2) Sauvegarder dès que le contenu change
+  // Sauvegarde automatique
   useEffect(() => {
     if (!visionId || typeof window === "undefined") return;
 
     const payload: VisionDetails = {
       longDef,
-      refinements,
+      phase1Started,
     };
 
     try {
       window.localStorage.setItem(storageKey(visionId), JSON.stringify(payload));
     } catch (e) {
-      console.error("Erreur d’enregistrement des détails de la vision :", e);
+      console.error("Erreur d’enregistrement de la définition initiale :", e);
     }
-  }, [visionId, longDef, refinements]);
-
-  function handleAddRefinement() {
-    const trimmed = newRefText.trim();
-    if (!trimmed) return;
-
-    const newRef: Refinement = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
-      text: trimmed,
-    };
-
-    setRefinements((prev) => [...prev, newRef]);
-    setNewRefText("");
-  }
-
-  function handleDeleteRefinement(id: string) {
-    setRefinements((prev) => prev.filter((r) => r.id !== id));
-  }
+  }, [visionId, longDef, phase1Started]);
 
   function goBackToVisions() {
     const params = new URLSearchParams({
@@ -109,6 +83,33 @@ export default function VisionClient() {
       problemShort,
     });
     router.push(`/visions?${params.toString()}`);
+  }
+
+  function goToPhase1() {
+    if (!visionId) {
+      alert("Vision inconnue : impossible d’ouvrir la phase 1.");
+      return;
+    }
+
+    if (!longDef.trim()) {
+      alert(
+        "Veuillez d’abord saisir une définition initiale de la vision avant de passer au premier raffinement (phase 1)."
+      );
+      return;
+    }
+
+    // On fige la définition initiale dès le premier passage en phase 1
+    setPhase1Started(true);
+
+    const params = new URLSearchParams({
+      problemName,
+      problemShort,
+      visionId,
+      visionName,
+      visionShort,
+    });
+
+    router.push(`/vision-phase1?${params.toString()}`);
   }
 
   return (
@@ -127,7 +128,7 @@ export default function VisionClient() {
         ← Revenir aux visions de ce problème
       </button>
 
-      <h1>Définition longue et raffinements de la vision</h1>
+      <h1>Définition initiale de la vision</h1>
 
       {/* Contexte : problème + vision */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
@@ -138,7 +139,8 @@ export default function VisionClient() {
         </p>
         {problemShort && (
           <p>
-            <strong>Définition courte du problème :</strong> {problemShort}</p>
+            <strong>Définition courte du problème :</strong> {problemShort}
+          </p>
         )}
 
         <p style={{ marginTop: 12 }}>
@@ -146,11 +148,12 @@ export default function VisionClient() {
         </p>
         {visionShort && (
           <p>
-            <strong>Définition courte de la vision :</strong> {visionShort}</p>
+            <strong>Définition courte de la vision :</strong> {visionShort}
+          </p>
         )}
       </section>
 
-      {/* Définition longue */}
+      {/* Définition initiale (qualitative, figée après passage à la phase 1) */}
       <section
         style={{
           border: "1px solid #ddd",
@@ -159,17 +162,19 @@ export default function VisionClient() {
           marginBottom: 32,
         }}
       >
-        <h2>Définition longue de la vision</h2>
+        <h2>Définition initiale (qualitative)</h2>
 
         <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
-          Ici, vous pouvez décrire en détail ce que signifie cette vision,
-          les hypothèses, les objectifs précis, les contraintes, etc.
+          Cette définition décrit qualitativement votre vision au point de
+          départ. Une fois que vous aurez commencé la phase 1 (premier
+          raffinement), cette définition sera figée et ne pourra plus être
+          modifiée.
         </p>
 
         <textarea
           value={longDef}
           onChange={(e) => setLongDef(e.target.value)}
-          rows={6}
+          rows={8}
           style={{
             marginTop: 12,
             width: "100%",
@@ -179,102 +184,38 @@ export default function VisionClient() {
             resize: "vertical",
           }}
           placeholder="Ex : Cette vision de la trésorerie suppose que..."
+          disabled={phase1Started}
         />
+
+        {phase1Started && (
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: "#b91c1c",
+            }}
+          >
+            La phase 1 a déjà été commencée : la définition initiale est
+            désormais figée.
+          </p>
+        )}
       </section>
 
-      {/* Raffinements */}
-      <section
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: 8,
-          padding: 24,
-          marginBottom: 32,
-        }}
-      >
-        <h2>Raffinements de cette vision</h2>
-
-        <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
-          Ajoutez ici des raffinements successifs : sous-objectifs, critères,
-          questions, étapes, etc.
-        </p>
-
-        <div style={{ marginTop: 16, marginBottom: 12 }}>
-          <label
-            htmlFor="new-refinement"
-            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
-          >
-            Nouveau raffinement
-          </label>
-          <input
-            id="new-refinement"
-            type="text"
-            value={newRefText}
-            onChange={(e) => setNewRefText(e.target.value)}
-            placeholder="Ex : Identifier les postes de trésorerie les plus volatils"
-            style={{
-              width: "100%",
-              padding: 8,
-              borderRadius: 4,
-              border: "1px solid #ccc",
-            }}
-          />
-        </div>
-
+      <section style={{ marginBottom: 40 }}>
         <button
-          onClick={handleAddRefinement}
-          disabled={!newRefText.trim()}
+          onClick={goToPhase1}
           style={{
-            padding: "8px 20px",
-            borderRadius: 4,
+            padding: "10px 24px",
+            borderRadius: 6,
             border: "none",
-            backgroundColor: newRefText.trim() ? "#2563eb" : "#9ca3af",
+            backgroundColor: "#2563eb",
             color: "white",
-            cursor: newRefText.trim() ? "pointer" : "not-allowed",
+            cursor: "pointer",
+            fontWeight: 600,
           }}
         >
-          Ajouter ce raffinement
+          Passer au premier raffinement (phase 1)
         </button>
-
-        <div style={{ marginTop: 24 }}>
-          <h3>Raffinements existants</h3>
-
-          {refinements.length === 0 ? (
-            <p style={{ marginTop: 8 }}>Aucun raffinement pour l’instant.</p>
-          ) : (
-            <ul style={{ listStyle: "none", padding: 0, marginTop: 12 }}>
-              {refinements.map((r) => (
-                <li
-                  key={r.id}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 8,
-                    padding: 12,
-                    marginBottom: 8,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                  }}
-                >
-                  <span>{r.text}</span>
-                  <button
-                    onClick={() => handleDeleteRefinement(r.id)}
-                    style={{
-                      padding: "4px 10px",
-                      borderRadius: 4,
-                      border: "none",
-                      backgroundColor: "#ef4444",
-                      color: "white",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Supprimer
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       </section>
     </main>
   );
