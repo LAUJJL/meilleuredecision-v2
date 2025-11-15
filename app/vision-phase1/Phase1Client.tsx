@@ -13,7 +13,7 @@ type Phase1Qual = {
 };
 
 type Phase1Quant = {
-  horizon: string; // on garde en string pour l’input
+  horizon: string; // stocké en string pour l’input
   initialStockValue: string;
   inflowValue: string;
   outflowValue: string;
@@ -38,7 +38,7 @@ export default function Phase1Client() {
   const [visionName, setVisionName] = useState("");
   const [visionShort, setVisionShort] = useState("");
 
-  // Phase 1A (qualitative structurante)
+  // Phase 1A (qualitative)
   const [qual, setQual] = useState<Phase1Qual>({
     stockName: "",
     initialStockName: "",
@@ -48,7 +48,7 @@ export default function Phase1Client() {
     outflowName: "",
   });
 
-  // Phase 1B (quantitative simple, flux constants)
+  // Phase 1B (quantitative simple)
   const [quant, setQuant] = useState<Phase1Quant>({
     horizon: "",
     initialStockValue: "",
@@ -58,7 +58,7 @@ export default function Phase1Client() {
 
   const [activeTab, setActiveTab] = useState<"qual" | "quant">("qual");
 
-  // Lecture des paramètres d’URL + chargement localStorage
+  // Charger contexte + données de phase 1
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -120,7 +120,7 @@ export default function Phase1Client() {
     router.push(`/vision?${params.toString()}`);
   }
 
-  // Calcul du “graphique” linéaire du stock sous forme de tableau
+  // Calcul de la série du stock (tableau)
   const stockSeries = useMemo(() => {
     const horizonNum = parseInt(quant.horizon, 10);
     const initial = parseFloat(quant.initialStockValue);
@@ -167,7 +167,7 @@ export default function Phase1Client() {
 
       <h1>Phase 1 – Premier raffinement de la vision</h1>
 
-      {/* Contexte : rappel problème + vision */}
+      {/* Contexte : problème + vision */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
         <h2>Contexte</h2>
 
@@ -190,7 +190,7 @@ export default function Phase1Client() {
         )}
       </section>
 
-      {/* Sélecteur de sous-parties 1A / 1B */}
+      {/* Sélecteur 1A / 1B */}
       <section style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -198,7 +198,8 @@ export default function Phase1Client() {
             style={{
               padding: "8px 16px",
               borderRadius: 6,
-              border: activeTab === "qual" ? "2px solid #2563eb" : "1px solid #d1d5db",
+              border:
+                activeTab === "qual" ? "2px solid #2563eb" : "1px solid #d1d5db",
               backgroundColor: activeTab === "qual" ? "#eff6ff" : "white",
               cursor: "pointer",
               fontWeight: activeTab === "qual" ? 600 : 400,
@@ -210,8 +211,9 @@ export default function Phase1Client() {
             onClick={() => setActiveTab("quant")}
             style={{
               padding: "8px 16px",
+              border:
+                activeTab === "quant" ? "2px solid #2563eb" : "1px solid #d1d5db",
               borderRadius: 6,
-              border: activeTab === "quant" ? "2px solid #2563eb" : "1px solid #d1d5db",
               backgroundColor: activeTab === "quant" ? "#eff6ff" : "white",
               cursor: "pointer",
               fontWeight: activeTab === "quant" ? 600 : 400,
@@ -223,7 +225,7 @@ export default function Phase1Client() {
       </section>
 
       {activeTab === "qual" ? (
-        /* Phase 1A – Qualitative structurante */
+        // Phase 1A – Qualitative
         <section
           style={{
             border: "1px solid #ddd",
@@ -235,9 +237,9 @@ export default function Phase1Client() {
           <h2>Phase 1A – Structure qualitative du stock et des flux</h2>
 
           <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
-            Ici, vous choisissez comment représenter votre système : nom du
-            stock, unité, temps et noms des flux d’entrée et de sortie. Tout
-            reste modifiable tant que vous ne passez pas aux phases suivantes.
+            Vous choisissez ici comment représenter votre système : stock, unité,
+            temps, flux d’entrée et de sortie. Tout cela reste modifiable tant
+            que vous ne passez pas aux phases suivantes.
           </p>
 
           <div style={{ marginTop: 16 }}>
@@ -276,7 +278,10 @@ export default function Phase1Client() {
               type="text"
               value={qual.initialStockName}
               onChange={(e) =>
-                setQual((prev) => ({ ...prev, initialStockName: e.target.value }))
+                setQual((prev) => ({
+                  ...prev,
+                  initialStockName: e.target.value,
+                }))
               }
               placeholder="Ex : Trésorerie au lancement du plan"
               style={{
@@ -385,7 +390,7 @@ export default function Phase1Client() {
           </div>
         </section>
       ) : (
-        /* Phase 1B – Quantitative simple, flux constants */
+        // Phase 1B – Quantitative simple
         <section
           style={{
             border: "1px solid #ddd",
@@ -397,10 +402,10 @@ export default function Phase1Client() {
           <h2>Phase 1B – Paramètres quantitatifs simples</h2>
 
           <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
-            Ici, vous choisissez des valeurs simples (flux constants) pour
-            expérimenter le comportement du stock au cours du temps. Cela ne
-            prétend pas décrire la réalité complète : l’objectif est
-            d’illustrer le rôle du stock et des flux.
+            Vous choisissez des valeurs simples (flux constants) pour expérimenter
+            le comportement du stock au cours du temps. L’objectif est de
+            comprendre le rôle du stock et des flux, pas de décrire toute la
+            réalité.
           </p>
 
           <div style={{ marginTop: 16 }}>
@@ -512,7 +517,7 @@ export default function Phase1Client() {
           </div>
 
           <div style={{ marginTop: 24 }}>
-            <h3>Évolution du stock (graphique linéaire simplifié)</h3>
+            <h3>Évolution du stock (tableau)</h3>
 
             {!stockSeries ? (
               <p style={{ marginTop: 8, fontSize: 14, color: "#6b7280" }}>
