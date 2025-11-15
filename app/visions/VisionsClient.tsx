@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 
 type Vision = {
   id: string;
@@ -15,16 +15,27 @@ function storageKey(problemName: string) {
 
 export default function VisionsClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
-  const problemName = searchParams.get("problemName") ?? "";
-  const problemShort = searchParams.get("problemShort") ?? "";
+  const [problemName, setProblemName] = useState("");
+  const [problemShort, setProblemShort] = useState("");
 
   const [visions, setVisions] = useState<Vision[]>([]);
   const [newName, setNewName] = useState("");
   const [newShort, setNewShort] = useState("");
 
-  // Charger les visions pour ce problème
+  // 1) Lire les paramètres d’URL au montage (client only)
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const name = params.get("problemName") ?? "";
+    const shortDef = params.get("problemShort") ?? "";
+
+    setProblemName(name);
+    setProblemShort(shortDef);
+  }, []);
+
+  // 2) Charger les visions quand on connaît le nom du problème
   useEffect(() => {
     if (!problemName || typeof window === "undefined") return;
     try {
@@ -39,14 +50,11 @@ export default function VisionsClient() {
     }
   }, [problemName]);
 
-  // Sauvegarder dès que la liste change
+  // 3) Sauvegarder dès que la liste change
   useEffect(() => {
     if (!problemName || typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(
-        storageKey(problemName),
-        JSON.stringify(visions)
-      );
+      window.localStorage.setItem(storageKey(problemName), JSON.stringify(visions));
     } catch (e) {
       console.error("Erreur d’enregistrement des visions :", e);
     }
