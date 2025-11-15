@@ -13,37 +13,47 @@ function storageKey(problemName: string) {
   return `md_visions_v1_${problemName}`;
 }
 
-export default function VisionsClient({
-  problemName,
-  problemShort,
-}: {
-  problemName: string;
-  problemShort: string;
-}) {
+export default function VisionsClient() {
   const router = useRouter();
 
+  const [problemName, setProblemName] = useState("");
+  const [problemShort, setProblemShort] = useState("");
   const [visions, setVisions] = useState<Vision[]>([]);
   const [newName, setNewName] = useState("");
   const [newShort, setNewShort] = useState("");
 
+  // Lire le problème depuis l’URL et charger les visions
   useEffect(() => {
-    if (!problemName || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+    const pName = params.get("problemName") ?? "";
+    const pShort = params.get("problemShort") ?? "";
+
+    setProblemName(pName);
+    setProblemShort(pShort);
+
+    if (!pName) return;
+
     try {
-      const raw = window.localStorage.getItem(storageKey(problemName));
+      const raw = window.localStorage.getItem(storageKey(pName));
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) setVisions(parsed);
+      if (Array.isArray(parsed)) {
+        setVisions(parsed);
+      }
     } catch (e) {
-      console.error("Erreur lecture visions :", e);
+      console.error("Erreur de lecture des visions :", e);
     }
-  }, [problemName]);
+  }, []);
 
+  // Sauvegarde des visions
   useEffect(() => {
     if (!problemName || typeof window === "undefined") return;
     try {
       window.localStorage.setItem(storageKey(problemName), JSON.stringify(visions));
     } catch (e) {
-      console.error("Erreur sauvegarde visions :", e);
+      console.error("Erreur d’enregistrement des visions :", e);
     }
   }, [problemName, visions]);
 
@@ -131,9 +141,9 @@ export default function VisionsClient({
           <input
             id="new-vision-name"
             type="text"
+            placeholder="Ex : Vision pessimiste de la trésorerie"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Ex : Vision optimiste"
             style={{
               width: "100%",
               padding: 8,
@@ -148,14 +158,14 @@ export default function VisionsClient({
             htmlFor="new-vision-short"
             style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
-            Définition courte
+            Définition courte de la vision
           </label>
           <textarea
             id="new-vision-short"
+            placeholder="Quelques mots pour distinguer cette vision des autres."
             value={newShort}
             onChange={(e) => setNewShort(e.target.value)}
             rows={2}
-            placeholder="Ex : Variation rapide de la trésorerie"
             style={{
               width: "100%",
               padding: 8,
@@ -183,7 +193,7 @@ export default function VisionsClient({
       </section>
 
       <section>
-        <h2>Visions existantes</h2>
+        <h2>Visions existantes pour ce problème</h2>
 
         {visions.length === 0 ? (
           <p style={{ marginTop: 12 }}>Aucune vision pour l’instant.</p>
