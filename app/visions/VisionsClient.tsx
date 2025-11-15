@@ -23,7 +23,7 @@ export default function VisionsClient() {
   const [newName, setNewName] = useState("");
   const [newShort, setNewShort] = useState("");
 
-  // 1) Lire les paramètres d’URL au montage (client only)
+  // 1) Lire les paramètres d’URL au montage (côté client)
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -33,13 +33,12 @@ export default function VisionsClient() {
 
     setProblemName(name);
     setProblemShort(shortDef);
-  }, []);
 
-  // 2) Charger les visions quand on connaît le nom du problème
-  useEffect(() => {
-    if (!problemName || typeof window === "undefined") return;
+    if (!name) return;
+
+    // Charger les visions pour ce problème
     try {
-      const raw = window.localStorage.getItem(storageKey(problemName));
+      const raw = window.localStorage.getItem(storageKey(name));
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -48,13 +47,16 @@ export default function VisionsClient() {
     } catch (e) {
       console.error("Erreur de lecture des visions :", e);
     }
-  }, [problemName]);
+  }, []);
 
-  // 3) Sauvegarder dès que la liste change
+  // 2) Sauvegarder dès que la liste change
   useEffect(() => {
     if (!problemName || typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(storageKey(problemName), JSON.stringify(visions));
+      window.localStorage.setItem(
+        storageKey(problemName),
+        JSON.stringify(visions)
+      );
     } catch (e) {
       console.error("Erreur d’enregistrement des visions :", e);
     }
@@ -81,6 +83,23 @@ export default function VisionsClient() {
 
   function goBackToProblems() {
     router.push("/");
+  }
+
+  function goToVisionDetails(v: Vision) {
+    if (!problemName) {
+      alert("Problème inconnu : impossible d’ouvrir cette vision.");
+      return;
+    }
+
+    const params = new URLSearchParams({
+      problemName,
+      problemShort,
+      visionId: v.id,
+      visionName: v.name,
+      visionShort: v.shortDef,
+    });
+
+    router.push(`/vision?${params.toString()}`);
   }
 
   return (
@@ -218,11 +237,7 @@ export default function VisionsClient() {
 
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <button
-                    onClick={() =>
-                      alert(
-                        "Plus tard : ici on ira vers la définition longue et les raffinements de cette vision."
-                      )
-                    }
+                    onClick={() => goToVisionDetails(v)}
                     style={{
                       padding: "6px 12px",
                       borderRadius: 4,
@@ -232,8 +247,8 @@ export default function VisionsClient() {
                       cursor: "pointer",
                     }}
                   >
-                    Voir la définition longue et les raffinements de cette vision
-                    (bientôt)
+                    Voir la définition longue et les raffinements de cette
+                    vision
                   </button>
 
                   <button
