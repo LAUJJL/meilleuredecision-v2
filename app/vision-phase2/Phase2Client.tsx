@@ -12,20 +12,17 @@ type RefinementData = {
 };
 
 function storageKey(visionId: string) {
-  // Premier raffinement de cette vision (on généralise plus tard si nécessaire)
-  return `md_refinement1_v1_${visionId}`;
+  return `md_refinement2_v1_${visionId}`;
 }
 
 export default function Phase2Client() {
   const router = useRouter();
 
-  // Contexte : problème + vision + identifiant de raffinement
   const [problemName, setProblemName] = useState("");
   const [problemShort, setProblemShort] = useState("");
   const [visionId, setVisionId] = useState("");
   const [visionName, setVisionName] = useState("");
   const [visionShort, setVisionShort] = useState("");
-  const [refinementId, setRefinementId] = useState("1");
 
   const [part1, setPart1] = useState<RefinementPart1>({
     userText: "",
@@ -42,14 +39,12 @@ export default function Phase2Client() {
     const vId = params.get("visionId") ?? "";
     const vName = params.get("visionName") ?? "";
     const vShort = params.get("visionShort") ?? "";
-    const rId = params.get("refinementId") ?? "1";
 
     setProblemName(pName);
     setProblemShort(pShort);
     setVisionId(vId);
     setVisionName(vName);
     setVisionShort(vShort);
-    setRefinementId(rId);
 
     if (!vId) return;
 
@@ -61,7 +56,7 @@ export default function Phase2Client() {
         setPart1((prev) => ({ ...prev, ...parsed.part1 }));
       }
     } catch (e) {
-      console.error("Erreur de lecture du raffinement (partie 1) :", e);
+      console.error("Erreur de lecture du raffinement 2 (partie 1) :", e);
     }
   }, []);
 
@@ -76,11 +71,11 @@ export default function Phase2Client() {
     try {
       window.localStorage.setItem(storageKey(visionId), JSON.stringify(payload));
     } catch (e) {
-      console.error("Erreur d’enregistrement du raffinement (partie 1) :", e);
+      console.error("Erreur d’enregistrement du raffinement 2 (partie 1) :", e);
     }
   }, [visionId, part1]);
 
-  function goBackToPhase1() {
+  function goBackToFirstRefinement() {
     const params = new URLSearchParams({
       problemName,
       problemShort,
@@ -106,14 +101,13 @@ export default function Phase2Client() {
       return;
     }
 
-    // Plus tard : on arrivera ici à la partie 2 (constants, variables auxiliaires, etc.)
-    alert("La partie 2 de ce raffinement sera ajoutée plus tard.");
+    alert("La partie 2 de ce raffinement (variables, équations, résultats) reste à implémenter.");
   }
 
   return (
     <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
       <button
-        onClick={goBackToPhase1}
+        onClick={goBackToFirstRefinement}
         style={{
           marginBottom: 16,
           padding: "6px 12px",
@@ -123,13 +117,13 @@ export default function Phase2Client() {
           cursor: "pointer",
         }}
       >
-        ← Revenir à la phase 1 de cette vision
+        ← Revenir au premier raffinement de cette vision
       </button>
 
-      {/* On reste sur "Raffinement" côté titre, comme tu le souhaites */}
-      <h1>Raffinement {refinementId} – Partie 1</h1>
+      {/* ⬇️ Titre clarifié */}
+      <h1>Raffinement 2 – Partie 1</h1>
 
-      {/* Contexte : problème + vision */}
+      {/* Contexte */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
         <h2>Contexte</h2>
 
@@ -150,7 +144,7 @@ export default function Phase2Client() {
         )}
       </section>
 
-      {/* Partie 1 : formulation qualitative unique du raffinement */}
+      {/* Partie 1 : formulation qualitative */}
       <section
         style={{
           border: "1px solid #ddd",
@@ -163,9 +157,8 @@ export default function Phase2Client() {
 
         <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
           Exprimez ici, en langage courant, le raffinement que vous souhaitez
-          apporter à cette vision. Plus tard, le site utilisera cette
-          formulation pour proposer une traduction logique (constantes,
-          variables auxiliaires, équations, etc.).
+          apporter à cette vision. Ce texte sera ensuite traduit en structure
+          logique (variables, constantes) et en équations.
         </p>
 
         <div style={{ marginTop: 16 }}>
@@ -180,7 +173,7 @@ export default function Phase2Client() {
             value={part1.userText}
             onChange={handleUserTextChange}
             rows={6}
-            placeholder="Ex : Je veux que les ventes augmentent d’abord lentement, puis plus vite, et que cela se reflète dans le chiffre d’affaires."
+            placeholder="Ex : Je veux distinguer une période d’investissement avec décaissements élevés, puis une période de retour à la normale."
             style={{
               width: "100%",
               padding: 8,
