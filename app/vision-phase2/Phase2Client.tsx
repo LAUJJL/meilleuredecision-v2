@@ -111,17 +111,18 @@ export default function Phase2Client() {
     });
   }
 
-  // Générer (pour l’instant) deux "reformulations" minimales
+  // Générer deux reformulations très simples mais différentes du texte original
   function handleGenerateReformulations() {
     const trimmed = part1.userText.trim();
     if (!trimmed) return;
 
-    // Version minimaliste : on affiche simplement deux fois le texte,
-    // en attendant l’intégration d’une vraie IA de reformulation.
+    const reform1 = `Si je comprends bien, vous voulez : ${trimmed}`;
+    const reform2 = `Autrement dit, votre raffinement consiste à : ${trimmed}`;
+
     setPart1((prev) => ({
       ...prev,
-      reformulation1: trimmed,
-      reformulation2: trimmed,
+      reformulation1: reform1,
+      reformulation2: reform2,
       reformulationsGenerated: true,
       reformulationsAccepted: false,
     }));
@@ -207,8 +208,8 @@ export default function Phase2Client() {
 
         <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
           Exprimez ici, en langage courant, le raffinement que vous souhaitez
-          apporter à cette vision. Plus tard, le site proposera deux
-          reformulations pour vérifier la compréhension.
+          apporter à cette vision. Le site propose ensuite deux reformulations
+          simples pour vérifier que le sens général est bien conservé.
         </p>
 
         <div style={{ marginTop: 16 }}>
@@ -253,7 +254,7 @@ export default function Phase2Client() {
 
         {part1.reformulationsGenerated && (
           <div style={{ marginTop: 24 }}>
-            <h3>Reformulations (brouillon minimal)</h3>
+            <h3>Reformulations</h3>
             <p
               style={{
                 fontSize: 13,
@@ -262,9 +263,10 @@ export default function Phase2Client() {
                 marginBottom: 12,
               }}
             >
-              Plus tard, le site proposera ici deux reformulations différentes
-              de votre texte. Pour l’instant, il s’agit simplement d’un écho
-              minimal de votre formulation.
+              Ces reformulations restent très simples : elles reprennent votre
+              texte en le replaçant dans deux formulations légèrement
+              différentes, pour vérifier le sens général. Plus tard, elles
+              pourront être enrichies.
             </p>
 
             <div
