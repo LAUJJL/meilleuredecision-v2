@@ -5,10 +5,6 @@ import { useRouter } from "next/navigation";
 
 type RefinementPart1 = {
   userText: string;
-  reformulation1: string;
-  reformulation2: string;
-  reformulationsGenerated: boolean;
-  reformulationsAccepted: boolean;
 };
 
 type RefinementData = {
@@ -16,14 +12,14 @@ type RefinementData = {
 };
 
 function storageKey(visionId: string) {
-  // Premier raffinement de cette vision. Plus tard : on pourra utiliser refinementId.
+  // Premier raffinement de cette vision (on généralise plus tard si nécessaire)
   return `md_refinement1_v1_${visionId}`;
 }
 
 export default function Phase2Client() {
   const router = useRouter();
 
-  // Contexte : problème + vision + id de raffinement
+  // Contexte : problème + vision + identifiant de raffinement
   const [problemName, setProblemName] = useState("");
   const [problemShort, setProblemShort] = useState("");
   const [visionId, setVisionId] = useState("");
@@ -33,10 +29,6 @@ export default function Phase2Client() {
 
   const [part1, setPart1] = useState<RefinementPart1>({
     userText: "",
-    reformulation1: "",
-    reformulation2: "",
-    reformulationsGenerated: false,
-    reformulationsAccepted: false,
   });
 
   // Charger contexte + éventuel raffinement déjà commencé
@@ -99,60 +91,22 @@ export default function Phase2Client() {
     router.push(`/vision-phase1?${params.toString()}`);
   }
 
-  // Quand le visiteur modifie son texte : on annule les reformulations
   function handleUserTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     const value = e.target.value;
-    setPart1({
-      userText: value,
-      reformulation1: "",
-      reformulation2: "",
-      reformulationsGenerated: false,
-      reformulationsAccepted: false,
-    });
+    setPart1({ userText: value });
   }
 
-  // Générer deux reformulations très simples mais différentes du texte original
-  function handleGenerateReformulations() {
-    const trimmed = part1.userText.trim();
-    if (!trimmed) return;
-
-    const reform1 = `Si je comprends bien, vous voulez : ${trimmed}`;
-    const reform2 = `Autrement dit, votre raffinement consiste à : ${trimmed}`;
-
-    setPart1((prev) => ({
-      ...prev,
-      reformulation1: reform1,
-      reformulation2: reform2,
-      reformulationsGenerated: true,
-      reformulationsAccepted: false,
-    }));
-  }
-
-  const canGenerate = !!part1.userText.trim();
-
-  const canGoToPart2 = !!(
-    part1.userText.trim() &&
-    part1.reformulationsGenerated &&
-    part1.reformulationsAccepted
-  );
-
-  function handleToggleAccepted(e: React.ChangeEvent<HTMLInputElement>) {
-    const checked = e.target.checked;
-    setPart1((prev) => ({
-      ...prev,
-      reformulationsAccepted: checked,
-    }));
-  }
+  const canGoToPart2 = !!part1.userText.trim();
 
   function goToPart2() {
     if (!canGoToPart2) {
       alert(
-        "Pour passer à la partie 2 de ce raffinement, saisissez un texte, générez les reformulations et confirmez qu’elles vous conviennent."
+        "Pour passer à la partie 2 de ce raffinement, saisissez d’abord une formulation qualitative."
       );
       return;
     }
 
-    // Pour l’instant, la partie 2 n’est pas encore implémentée.
+    // Plus tard : on arrivera ici à la partie 2 (constants, variables auxiliaires, etc.)
     alert("La partie 2 de ce raffinement sera ajoutée plus tard.");
   }
 
@@ -172,7 +126,8 @@ export default function Phase2Client() {
         ← Revenir à la phase 1 de cette vision
       </button>
 
-      <h1>Phase 2 – Raffinement {refinementId} (partie 1)</h1>
+      {/* On reste sur "Raffinement" côté titre, comme tu le souhaites */}
+      <h1>Raffinement {refinementId} – Partie 1</h1>
 
       {/* Contexte : problème + vision */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
@@ -195,7 +150,7 @@ export default function Phase2Client() {
         )}
       </section>
 
-      {/* Partie 1 : texte libre + reformulations */}
+      {/* Partie 1 : formulation qualitative unique du raffinement */}
       <section
         style={{
           border: "1px solid #ddd",
@@ -208,8 +163,9 @@ export default function Phase2Client() {
 
         <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
           Exprimez ici, en langage courant, le raffinement que vous souhaitez
-          apporter à cette vision. Le site propose ensuite deux reformulations
-          simples pour vérifier que le sens général est bien conservé.
+          apporter à cette vision. Plus tard, le site utilisera cette
+          formulation pour proposer une traduction logique (constantes,
+          variables auxiliaires, équations, etc.).
         </p>
 
         <div style={{ marginTop: 16 }}>
@@ -223,7 +179,7 @@ export default function Phase2Client() {
             id="raffinement-texte"
             value={part1.userText}
             onChange={handleUserTextChange}
-            rows={5}
+            rows={6}
             placeholder="Ex : Je veux que les ventes augmentent d’abord lentement, puis plus vite, et que cela se reflète dans le chiffre d’affaires."
             style={{
               width: "100%",
@@ -234,85 +190,6 @@ export default function Phase2Client() {
             }}
           />
         </div>
-
-        <button
-          onClick={handleGenerateReformulations}
-          disabled={!canGenerate}
-          style={{
-            marginTop: 12,
-            padding: "8px 20px",
-            borderRadius: 4,
-            border: "none",
-            backgroundColor: canGenerate ? "#2563eb" : "#9ca3af",
-            color: "white",
-            cursor: canGenerate ? "pointer" : "not-allowed",
-            fontWeight: 600,
-          }}
-        >
-          Générer les reformulations (version minimale)
-        </button>
-
-        {part1.reformulationsGenerated && (
-          <div style={{ marginTop: 24 }}>
-            <h3>Reformulations</h3>
-            <p
-              style={{
-                fontSize: 13,
-                color: "#6b7280",
-                marginTop: 4,
-                marginBottom: 12,
-              }}
-            >
-              Ces reformulations restent très simples : elles reprennent votre
-              texte en le replaçant dans deux formulations légèrement
-              différentes, pour vérifier le sens général. Plus tard, elles
-              pourront être enrichies.
-            </p>
-
-            <div
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 6,
-                padding: 12,
-                marginBottom: 8,
-                backgroundColor: "#f9fafb",
-              }}
-            >
-              <strong>Reformulation 1 :</strong>
-              <p style={{ marginTop: 4 }}>{part1.reformulation1}</p>
-            </div>
-
-            <div
-              style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: 6,
-                padding: 12,
-                backgroundColor: "#f9fafb",
-              }}
-            >
-              <strong>Reformulation 2 :</strong>
-              <p style={{ marginTop: 4 }}>{part1.reformulation2}</p>
-            </div>
-
-            <div style={{ marginTop: 12 }}>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 14,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={part1.reformulationsAccepted}
-                  onChange={handleToggleAccepted}
-                />
-                Oui, ces reformulations reflètent bien ce que je veux dire.
-              </label>
-            </div>
-          </div>
-        )}
       </section>
 
       <section style={{ marginBottom: 40 }}>
@@ -339,8 +216,8 @@ export default function Phase2Client() {
               color: "#6b7280",
             }}
           >
-            Pour continuer, saisissez un texte de raffinement, générez les
-            reformulations et confirmez qu’elles vous conviennent.
+            Pour continuer, saisissez une formulation qualitative de votre
+            raffinement.
           </p>
         )}
       </section>
