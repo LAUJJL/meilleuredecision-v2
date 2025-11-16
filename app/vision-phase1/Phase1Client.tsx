@@ -2,6 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  buildPhase1Snapshot,
+  saveSnapshotToLocalStorage,
+} from "@/lib/pivot";
 
 type Phase1Qual = {
   stockName: string;
@@ -120,7 +124,7 @@ export default function Phase1Client() {
     router.push(`/vision?${params.toString()}`);
   }
 
-  // Tableau d’évolution du stock
+  // Tableau d’évolution du stock (calcul local comme avant)
   const stockSeries = useMemo(() => {
     const horizonNum = parseInt(quant.horizon, 10);
     const initial = parseFloat(quant.initialStockValue);
@@ -170,6 +174,26 @@ export default function Phase1Client() {
       return;
     }
 
+    // Construction du snapshot pivot pour ce premier raffinement
+    const horizonNum = parseInt(quant.horizon, 10);
+    const initialVal = parseFloat(quant.initialStockValue);
+    const inflowVal = parseFloat(quant.inflowValue);
+    const outflowVal = parseFloat(quant.outflowValue);
+
+    const snapshot = buildPhase1Snapshot({
+      problemId: problemName || "probleme_sans_id",
+      visionId: visionId,
+      refinementIndex: 1,
+      timeUnit: qual.timeUnit || "période",
+      horizon: horizonNum,
+      stockUnit: qual.stockUnit || "unités",
+      initialStockValue: initialVal,
+      inflowValue: inflowVal,
+      outflowValue: outflowVal,
+    });
+
+    saveSnapshotToLocalStorage(snapshot);
+
     const params = new URLSearchParams({
       problemName,
       problemShort,
@@ -198,7 +222,6 @@ export default function Phase1Client() {
         ← Revenir à la définition initiale de cette vision
       </button>
 
-      {/* ⬇️ CHANGEMENT ICI : plus de “Phase 1 –” */}
       <h1>Premier raffinement de la vision</h1>
 
       {/* Contexte */}
@@ -210,7 +233,8 @@ export default function Phase1Client() {
         </p>
         {problemShort && (
           <p>
-            <strong>Définition courte du problème :</strong> {problemShort}</p>
+            <strong>Définition courte du problème :</strong> {problemShort}
+          </p>
         )}
 
         <p style={{ marginTop: 12 }}>
@@ -218,7 +242,8 @@ export default function Phase1Client() {
         </p>
         {visionShort && (
           <p>
-            <strong>Définition courte de la vision :</strong> {visionShort}</p>
+            <strong>Définition courte de la vision :</strong> {visionShort}
+          </p>
         )}
       </section>
 
