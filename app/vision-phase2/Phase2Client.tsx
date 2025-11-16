@@ -9,8 +9,6 @@ import {
   saveSnapshotToLocalStorage,
 } from "@/lib/pivot";
 
-type SearchParams = { [key: string]: string | string[] | undefined };
-
 type Part1Data = {
   refinementText: string;
 };
@@ -22,38 +20,15 @@ type Part2Data = {
 
 type StockPoint = { t: number; value: number; margin?: number };
 
-export default function Phase2Client({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default function Phase2Client() {
   const router = useRouter();
 
   // Contexte problème + vision
-  const rawProblemName = searchParams.problemName;
-  const rawProblemShort = searchParams.problemShort;
-  const rawVisionId = searchParams.visionId;
-  const rawVisionName = searchParams.visionName;
-  const rawVisionShort = searchParams.visionShort;
-
-  const problemName =
-    typeof rawProblemName === "string"
-      ? rawProblemName
-      : rawProblemName?.[0] ?? "";
-  const problemShort =
-    typeof rawProblemShort === "string"
-      ? rawProblemShort
-      : rawProblemShort?.[0] ?? "";
-  const visionId =
-    typeof rawVisionId === "string" ? rawVisionId : rawVisionId?.[0] ?? "";
-  const visionName =
-    typeof rawVisionName === "string"
-      ? rawVisionName
-      : rawVisionName?.[0] ?? "";
-  const visionShort =
-    typeof rawVisionShort === "string"
-      ? rawVisionShort
-      : rawVisionShort?.[0] ?? "";
+  const [problemName, setProblemName] = useState("");
+  const [problemShort, setProblemShort] = useState("");
+  const [visionId, setVisionId] = useState("");
+  const [visionName, setVisionName] = useState("");
+  const [visionShort, setVisionShort] = useState("");
 
   // Partie 1 : texte du raffinement
   const [part1, setPart1] = useState<Part1Data>({
@@ -79,7 +54,7 @@ export default function Phase2Client({
     achieved: boolean;
   } | null>(null);
 
-  // --- Clés de stockage local ---
+  // Clés de stockage local pour ce raffinement
   function part1StorageKey(visionId: string) {
     return `md_ref2_part1_${visionId}`;
   }
@@ -87,13 +62,29 @@ export default function Phase2Client({
     return `md_ref2_part2_${visionId}`;
   }
 
-  // Charger données existantes (Partie 1 + Partie 2 + snapshot de base)
+  // Charger contexte + données (comme en Phase 1 : via window.location.search)
   useEffect(() => {
-    if (typeof window === "undefined" || !visionId) return;
+    if (typeof window === "undefined") return;
+
+    const params = new URLSearchParams(window.location.search);
+
+    const pName = params.get("problemName") ?? "";
+    const pShort = params.get("problemShort") ?? "";
+    const vId = params.get("visionId") ?? "";
+    const vName = params.get("visionName") ?? "";
+    const vShort = params.get("visionShort") ?? "";
+
+    setProblemName(pName);
+    setProblemShort(pShort);
+    setVisionId(vId);
+    setVisionName(vName);
+    setVisionShort(vShort);
+
+    if (!vId) return;
 
     try {
       // Partie 1
-      const raw1 = window.localStorage.getItem(part1StorageKey(visionId));
+      const raw1 = window.localStorage.getItem(part1StorageKey(vId));
       if (raw1) {
         const parsed1 = JSON.parse(raw1) as Partial<Part1Data>;
         if (parsed1.refinementText) {
@@ -102,14 +93,14 @@ export default function Phase2Client({
       }
 
       // Partie 2
-      const raw2 = window.localStorage.getItem(part2StorageKey(visionId));
+      const raw2 = window.localStorage.getItem(part2StorageKey(vId));
       if (raw2) {
         const parsed2 = JSON.parse(raw2) as Partial<Part2Data>;
         setPart2((prev) => ({ ...prev, ...parsed2 }));
       }
 
       // Snapshot pivot du raffinement 1
-      const keyBase = snapshotStorageKey(visionId, 1);
+      const keyBase = snapshotStorageKey(vId, 1);
       const rawBase = window.localStorage.getItem(keyBase);
       if (rawBase) {
         const parsedBase = JSON.parse(rawBase) as ModelSnapshot;
@@ -118,9 +109,9 @@ export default function Phase2Client({
     } catch (e) {
       console.error("Erreur de chargement des données du raffinement 2 :", e);
     }
-  }, [visionId]);
+  }, []);
 
-  // Sauvegarde auto Part 1 + Part 2
+  // Sauvegarde auto Part 1
   useEffect(() => {
     if (typeof window === "undefined" || !visionId) return;
     try {
@@ -129,10 +120,14 @@ export default function Phase2Client({
         JSON.stringify(part1)
       );
     } catch (e) {
-      console.error("Erreur d’enregistrement de la Partie 1 du raffinement 2 :", e);
+      console.error(
+        "Erreur d’enregistrement de la Partie 1 du raffinement 2 :",
+        e
+      );
     }
   }, [visionId, part1]);
 
+  // Sauvegarde auto Part 2
   useEffect(() => {
     if (typeof window === "undefined" || !visionId) return;
     try {
@@ -141,7 +136,10 @@ export default function Phase2Client({
         JSON.stringify(part2)
       );
     } catch (e) {
-      console.error("Erreur d’enregistrement de la Partie 2 du raffinement 2 :", e);
+      console.error(
+        "Erreur d’enregistrement de la Partie 2 du raffinement 2 :",
+        e
+      );
     }
   }, [visionId, part2]);
 
@@ -179,7 +177,11 @@ export default function Phase2Client({
         ? p.flux_sortie_constant.value
         : NaN;
 
-    if (!Number.isFinite(initial) || !Number.isFinite(inflow) || !Number.isFinite(outflow)) {
+    if (
+      !Number.isFinite(initial) ||
+      !Number.isFinite(inflow) ||
+      !Number.isFinite(outflow)
+    ) {
       return null;
     }
 
@@ -195,22 +197,13 @@ export default function Phase2Client({
     return series;
   }, [baseSnapshot]);
 
+  // Conditions pour accéder à la Partie 2
   const canGoToPart2 = !!part1.refinementText.trim() && !!stockSeries;
-
-  function handleGoToPart2() {
-    if (!canGoToPart2) {
-      alert(
-        "Pour passer à la partie 2 de ce raffinement, saisissez d’abord le texte de votre raffinement."
-      );
-      return;
-    }
-    setActivePart("part2");
-  }
 
   function computeResults() {
     if (!stockSeries) {
       alert(
-        "Le modèle de base (raffinement 1) est introuvable ou incomplet. Revenez au premier raffinement."
+        "Le modèle de base (premier raffinement) est introuvable ou incomplet. Revenez au premier raffinement."
       );
       return;
     }
@@ -238,7 +231,9 @@ export default function Phase2Client({
       margin: pt.value - obj,
     }));
 
-    const valueAtPeriod = seriesWithMargin.find((pt) => pt.t === period)?.value;
+    const valueAtPeriod = seriesWithMargin.find(
+      (pt) => pt.t === period
+    )?.value;
     const achieved =
       typeof valueAtPeriod === "number" ? valueAtPeriod >= obj : false;
 
@@ -351,7 +346,7 @@ export default function Phase2Client({
         )}
       </section>
 
-      {/* Sélecteur de partie */}
+      {/* Onglets */}
       <section style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -360,7 +355,9 @@ export default function Phase2Client({
               padding: "8px 16px",
               borderRadius: 6,
               border:
-                activePart === "part1" ? "2px solid #2563eb" : "1px solid #d1d5db",
+                activePart === "part1"
+                  ? "2px solid #2563eb"
+                  : "1px solid #d1d5db",
               backgroundColor: activePart === "part1" ? "#eff6ff" : "white",
               cursor: "pointer",
               fontWeight: activePart === "part1" ? 600 : 400,
@@ -368,31 +365,46 @@ export default function Phase2Client({
           >
             Partie 1 – Formulation
           </button>
+
           <button
             onClick={() => {
-              if (canGoToPart2) setActivePart("part2");
-              else
-                alert(
-                  "Complétez d’abord la Partie 1 (texte du raffinement) pour accéder à la Partie 2."
-                );
+              if (!canGoToPart2) return;
+              setActivePart("part2");
             }}
+            disabled={!canGoToPart2}
             style={{
               padding: "8px 16px",
               borderRadius: 6,
               border:
-                activePart === "part2" ? "2px solid #2563eb" : "1px solid #d1d5db",
+                activePart === "part2"
+                  ? "2px solid #2563eb"
+                  : "1px solid #d1d5db",
               backgroundColor: activePart === "part2" ? "#eff6ff" : "white",
-              cursor: "pointer",
+              cursor: canGoToPart2 ? "pointer" : "not-allowed",
               fontWeight: activePart === "part2" ? 600 : 400,
+              opacity: canGoToPart2 ? 1 : 0.5,
             }}
           >
             Partie 2 – Objectif et résultats
           </button>
         </div>
+        {!canGoToPart2 && (
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: "#6b7280",
+            }}
+          >
+            Pour accéder à la Partie 2, saisissez un texte de raffinement et
+            assurez-vous que le premier raffinement (stock et flux) est bien
+            défini.
+          </p>
+        )}
       </section>
 
       {activePart === "part1" ? (
-        // --- PARTIE 1 : Texte libre ---
+        // -------- PARTIE 1 : TEXTE LIBRE --------
         <section
           style={{
             border: "1px solid #ddd",
@@ -438,39 +450,9 @@ export default function Phase2Client({
               }}
             />
           </div>
-
-          <div style={{ marginTop: 24 }}>
-            <button
-              onClick={handleGoToPart2}
-              style={{
-                padding: "10px 24px",
-                borderRadius: 6,
-                border: "none",
-                backgroundColor: canGoToPart2 ? "#2563eb" : "#9ca3af",
-                color: "white",
-                cursor: canGoToPart2 ? "pointer" : "not-allowed",
-                fontWeight: 600,
-              }}
-            >
-              Passer à la partie 2 de ce raffinement
-            </button>
-            {!canGoToPart2 && (
-              <p
-                style={{
-                  marginTop: 8,
-                  fontSize: 13,
-                  color: "#6b7280",
-                }}
-              >
-                Pour continuer, saisissez au moins un texte de raffinement et
-                assurez-vous que le premier raffinement (stock et flux) est
-                correctement défini.
-              </p>
-            )}
-          </div>
         </section>
       ) : (
-        // --- PARTIE 2 : Objectif + résultats ---
+        // -------- PARTIE 2 : OBJECTIF + RESULTATS --------
         <section
           style={{
             border: "1px solid #ddd",
@@ -584,7 +566,13 @@ export default function Phase2Client({
                   <p style={{ marginTop: 8 }}>
                     À la période <strong>{results.targetPeriod}</strong>, la
                     trésorerie vaut{" "}
-                    <strong>{results.series.find((p) => p.t === results.targetPeriod)?.value.toFixed(2)}</strong>
+                    <strong>
+                      {
+                        results.series.find(
+                          (p) => p.t === results.targetPeriod
+                        )?.value.toFixed(2)
+                      }
+                    </strong>
                     {baseSnapshot?.parameters.tresorerie_initiale?.unit
                       ? ` ${baseSnapshot.parameters.tresorerie_initiale.unit}`
                       : ""}{" "}
