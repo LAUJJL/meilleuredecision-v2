@@ -38,7 +38,7 @@ export default function Phase1Client() {
   const [visionName, setVisionName] = useState("");
   const [visionShort, setVisionShort] = useState("");
 
-  // Phase 1A (qualitative)
+  // Partie qualitative
   const [qual, setQual] = useState<Phase1Qual>({
     stockName: "",
     initialStockName: "",
@@ -48,7 +48,7 @@ export default function Phase1Client() {
     outflowName: "",
   });
 
-  // Phase 1B (quantitative simple)
+  // Partie quantitative simple
   const [quant, setQuant] = useState<Phase1Quant>({
     horizon: "",
     initialStockValue: "",
@@ -58,7 +58,7 @@ export default function Phase1Client() {
 
   const [activeTab, setActiveTab] = useState<"qual" | "quant">("qual");
 
-  // Charger contexte + données de phase 1
+  // Charger contexte + données
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -89,11 +89,11 @@ export default function Phase1Client() {
         setQuant((prev) => ({ ...prev, ...parsed.quant }));
       }
     } catch (e) {
-      console.error("Erreur de lecture des données de phase 1 :", e);
+      console.error("Erreur de lecture des données de premier raffinement :", e);
     }
   }, []);
 
-  // Sauvegarde automatique
+  // Sauvegarde auto
   useEffect(() => {
     if (!visionId || typeof window === "undefined") return;
 
@@ -105,7 +105,7 @@ export default function Phase1Client() {
     try {
       window.localStorage.setItem(storageKey(visionId), JSON.stringify(payload));
     } catch (e) {
-      console.error("Erreur d’enregistrement de la phase 1 :", e);
+      console.error("Erreur d’enregistrement du premier raffinement :", e);
     }
   }, [visionId, qual, quant]);
 
@@ -120,7 +120,7 @@ export default function Phase1Client() {
     router.push(`/vision?${params.toString()}`);
   }
 
-  // Calcul de la série du stock (tableau)
+  // Tableau d’évolution du stock
   const stockSeries = useMemo(() => {
     const horizonNum = parseInt(quant.horizon, 10);
     const initial = parseFloat(quant.initialStockValue);
@@ -149,7 +149,7 @@ export default function Phase1Client() {
     return series;
   }, [quant.horizon, quant.initialStockValue, quant.inflowValue, quant.outflowValue]);
 
-  // Conditions minimales pour passer au raffinement suivant
+  // Conditions minimales pour aller au raffinement suivant
   const canGoToPhase2 = !!(
     qual.stockName.trim() &&
     qual.stockUnit.trim() &&
@@ -159,7 +159,7 @@ export default function Phase1Client() {
 
   function goToPhase2() {
     if (!visionId) {
-      alert("Vision inconnue : impossible d’ouvrir le raffinement (phase 2).");
+      alert("Vision inconnue : impossible d’ouvrir le raffinement suivant.");
       return;
     }
 
@@ -176,7 +176,7 @@ export default function Phase1Client() {
       visionId,
       visionName,
       visionShort,
-      refinementId: "1", // premier raffinement de cette vision
+      refinementId: "2", // on considère ce second écran comme « Raffinement 2 »
     });
 
     router.push(`/vision-phase2?${params.toString()}`);
@@ -198,9 +198,10 @@ export default function Phase1Client() {
         ← Revenir à la définition initiale de cette vision
       </button>
 
-      <h1>Phase 1 – Premier raffinement de la vision</h1>
+      {/* ⬇️ CHANGEMENT ICI : plus de “Phase 1 –” */}
+      <h1>Premier raffinement de la vision</h1>
 
-      {/* Contexte : problème + vision */}
+      {/* Contexte */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
         <h2>Contexte</h2>
 
@@ -221,7 +222,7 @@ export default function Phase1Client() {
         )}
       </section>
 
-      {/* Sélecteur 1A / 1B */}
+      {/* Sélecteur partie qualitative / quantitative */}
       <section style={{ marginBottom: 24 }}>
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -236,7 +237,7 @@ export default function Phase1Client() {
               fontWeight: activeTab === "qual" ? 600 : 400,
             }}
           >
-            Partie qualitative (1A)
+            Partie qualitative
           </button>
           <button
             onClick={() => setActiveTab("quant")}
@@ -250,13 +251,13 @@ export default function Phase1Client() {
               fontWeight: activeTab === "quant" ? 600 : 400,
             }}
           >
-            Partie quantitative simple (1B)
+            Partie quantitative simple
           </button>
         </div>
       </section>
 
       {activeTab === "qual" ? (
-        // Phase 1A – Qualitative
+        // Qualitatif
         <section
           style={{
             border: "1px solid #ddd",
@@ -265,12 +266,12 @@ export default function Phase1Client() {
             marginBottom: 32,
           }}
         >
-          <h2>Phase 1A – Structure qualitative du stock et des flux</h2>
+          <h2>Structure qualitative du stock et des flux</h2>
 
           <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
             Vous choisissez ici comment représenter votre système : stock, unité,
             temps, flux d’entrée et de sortie. Tout cela reste modifiable tant
-            que vous ne passez pas aux phases suivantes.
+            que vous ne passez pas aux raffinements suivants.
           </p>
 
           <div style={{ marginTop: 16 }}>
@@ -421,7 +422,7 @@ export default function Phase1Client() {
           </div>
         </section>
       ) : (
-        // Phase 1B – Quantitative simple
+        // Quantitatif
         <section
           style={{
             border: "1px solid #ddd",
@@ -430,7 +431,7 @@ export default function Phase1Client() {
             marginBottom: 32,
           }}
         >
-          <h2>Phase 1B – Paramètres quantitatifs simples</h2>
+          <h2>Paramètres quantitatifs simples</h2>
 
           <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
             Vous choisissez des valeurs simples (flux constants) pour expérimenter
@@ -617,7 +618,7 @@ export default function Phase1Client() {
         </section>
       )}
 
-      {/* Passage au raffinement suivant (phase 2) */}
+      {/* Passage au raffinement suivant */}
       <section style={{ marginTop: 16, marginBottom: 40 }}>
         <button
           onClick={goToPhase2}
@@ -632,7 +633,7 @@ export default function Phase1Client() {
             fontWeight: 600,
           }}
         >
-          Passer au raffinement suivant (phase 2)
+          Passer au raffinement suivant
         </button>
         {!canGoToPhase2 && (
           <p
