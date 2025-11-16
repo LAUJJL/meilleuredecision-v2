@@ -149,6 +149,39 @@ export default function Phase1Client() {
     return series;
   }, [quant.horizon, quant.initialStockValue, quant.inflowValue, quant.outflowValue]);
 
+  // Conditions minimales pour passer au raffinement suivant
+  const canGoToPhase2 = !!(
+    qual.stockName.trim() &&
+    qual.stockUnit.trim() &&
+    qual.timeUnit.trim() &&
+    stockSeries
+  );
+
+  function goToPhase2() {
+    if (!visionId) {
+      alert("Vision inconnue : impossible d’ouvrir le raffinement (phase 2).");
+      return;
+    }
+
+    if (!canGoToPhase2) {
+      alert(
+        "Pour passer au raffinement suivant, complétez au moins le stock, ses unités, le temps, et les paramètres quantitatifs de base."
+      );
+      return;
+    }
+
+    const params = new URLSearchParams({
+      problemName,
+      problemShort,
+      visionId,
+      visionName,
+      visionShort,
+      refinementId: "1", // premier raffinement de cette vision
+    });
+
+    router.push(`/vision-phase2?${params.toString()}`);
+  }
+
   return (
     <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
       <button
@@ -176,8 +209,7 @@ export default function Phase1Client() {
         </p>
         {problemShort && (
           <p>
-            <strong>Définition courte du problème :</strong> {problemShort}
-          </p>
+            <strong>Définition courte du problème :</strong> {problemShort}</p>
         )}
 
         <p style={{ marginTop: 12 }}>
@@ -185,8 +217,7 @@ export default function Phase1Client() {
         </p>
         {visionShort && (
           <p>
-            <strong>Définition courte de la vision :</strong> {visionShort}
-          </p>
+            <strong>Définition courte de la vision :</strong> {visionShort}</p>
         )}
       </section>
 
@@ -585,6 +616,38 @@ export default function Phase1Client() {
           </div>
         </section>
       )}
+
+      {/* Passage au raffinement suivant (phase 2) */}
+      <section style={{ marginTop: 16, marginBottom: 40 }}>
+        <button
+          onClick={goToPhase2}
+          disabled={!canGoToPhase2}
+          style={{
+            padding: "10px 24px",
+            borderRadius: 6,
+            border: "none",
+            backgroundColor: canGoToPhase2 ? "#2563eb" : "#9ca3af",
+            color: "white",
+            cursor: canGoToPhase2 ? "pointer" : "not-allowed",
+            fontWeight: 600,
+          }}
+        >
+          Passer au raffinement suivant (phase 2)
+        </button>
+        {!canGoToPhase2 && (
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: "#6b7280",
+            }}
+          >
+            Pour continuer, complétez au moins le nom du stock, ses unités, et
+            les paramètres quantitatifs permettant de calculer l’évolution du
+            stock.
+          </p>
+        )}
+      </section>
     </main>
   );
 }
