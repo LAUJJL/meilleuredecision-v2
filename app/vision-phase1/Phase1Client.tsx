@@ -33,7 +33,7 @@ export default function Phase1Client() {
   const [visionName, setVisionName] = useState("");
   const [visionShort, setVisionShort] = useState("");
 
-  // Partie qualitative (Phase 1A)
+  // Partie qualitative (1A)
   const [qual, setQual] = useState<QualitativeData>({
     stockName: "",
     stockUnit: "",
@@ -41,7 +41,7 @@ export default function Phase1Client() {
     horizon: "",
   });
 
-  // Partie quantitative (Phase 1B)
+  // Partie quantitative (1B)
   const [quant, setQuant] = useState<QuantitativeData>({
     initialStock: "",
     inflow: "",
@@ -187,19 +187,20 @@ export default function Phase1Client() {
       problemName,
       problemShort,
     });
-    // Retour à la liste des visions pour ce problème
     router.push(`/visions?${params.toString()}`);
   }
 
-  // Petit utilitaire pour produire un "id" de problème à partir du nom
+  // Produit un id à partir du nom du problème
   function slugifyId(input: string): string {
-    return input
-      .toLowerCase()
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .substring(0, 40) || "problem";
+    return (
+      input
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .substring(0, 40) || "problem"
+    );
   }
 
   function handleValidateAndGoNext() {
@@ -277,7 +278,10 @@ export default function Phase1Client() {
       });
       router.push(`/vision-phase2?${params.toString()}`);
     } catch (e) {
-      console.error("Erreur lors de la construction du snapshot de phase 1 :", e);
+      console.error(
+        "Erreur lors de la construction du snapshot de phase 1 :",
+        e
+      );
       alert(
         "Une erreur est survenue lors de la validation du raffinement. Réessayez ou revenez plus tard."
       );
