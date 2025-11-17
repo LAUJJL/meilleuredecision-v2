@@ -22,11 +22,11 @@ export type PivotParameter = {
   unit?: string;
   description?: string;
 
-  // Genre de la constante (facultatif pour le MVP, mais prêt pour la méthode)
+  // Genre de la constante (facultatif pour le MVP)
   // Si rien n'est précisé, on pourra interpréter comme "transient" par défaut.
   kind?: ConstantKind;
 
-  // Raffinement dans lequel ce paramètre a été introduit (facultatif pour le MVP)
+  // Raffinement dans lequel ce paramètre a été introduit (facultatif)
   introducedAtRefinement?: number;
 
   // Dernier raffinement où la valeur / le genre a été modifié
@@ -51,7 +51,7 @@ export type PivotFlow = {
   unit?: string;
   description?: string;
 
-  // Équation en langage pivot (ex: "flux_entree_constant" ou plus tard fonction du temps)
+  // Équation en langage pivot (ex: "flux_entree_constant")
   equation: string;
 
   equationStatus?: EquationStatus;
@@ -121,7 +121,6 @@ export function buildPhase1Snapshot(args: {
   outflowValue: number;
 }): ModelSnapshot {
   const nowIso = new Date().toISOString();
-
   const refinementIndex = args.refinementIndex;
 
   return {
