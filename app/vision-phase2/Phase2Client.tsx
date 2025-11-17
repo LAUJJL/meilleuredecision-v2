@@ -54,6 +54,9 @@ export default function Phase2Client() {
     achieved: boolean;
   } | null>(null);
 
+  // Raffinement 2 verrouillé ?
+  const [isLocked, setIsLocked] = useState(false);
+
   // Clés de stockage local pour ce raffinement
   function part1StorageKey(visionId: string) {
     return `md_ref2_part1_${visionId}`;
@@ -61,8 +64,11 @@ export default function Phase2Client() {
   function part2StorageKey(visionId: string) {
     return `md_ref2_part2_${visionId}`;
   }
+  function lockKey(visionId: string) {
+    return `md_refinement2_locked_${visionId}`;
+  }
 
-  // Charger contexte + données (comme en Phase 1 : via window.location.search)
+  // Charger contexte + données + snapshot de base + verrouillage
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -83,6 +89,12 @@ export default function Phase2Client() {
     if (!vId) return;
 
     try {
+      // Verrouillage
+      const lockedRaw = window.localStorage.getItem(lockKey(vId));
+      if (lockedRaw === "true") {
+        setIsLocked(true);
+      }
+
       // Partie 1
       const raw1 = window.localStorage.getItem(part1StorageKey(vId));
       if (raw1) {
@@ -113,7 +125,7 @@ export default function Phase2Client() {
 
   // Sauvegarde auto Part 1
   useEffect(() => {
-    if (typeof window === "undefined" || !visionId) return;
+    if (typeof window === "undefined" || !visionId || isLocked) return;
     try {
       window.localStorage.setItem(
         part1StorageKey(visionId),
@@ -125,11 +137,11 @@ export default function Phase2Client() {
         e
       );
     }
-  }, [visionId, part1]);
+  }, [visionId, part1, isLocked]);
 
   // Sauvegarde auto Part 2
   useEffect(() => {
-    if (typeof window === "undefined" || !visionId) return;
+    if (typeof window === "undefined" || !visionId || isLocked) return;
     try {
       window.localStorage.setItem(
         part2StorageKey(visionId),
@@ -141,7 +153,7 @@ export default function Phase2Client() {
         e
       );
     }
-  }, [visionId, part2]);
+  }, [visionId, part2, isLocked]);
 
   function goBackToPhase1() {
     const params = new URLSearchParams({
@@ -151,6 +163,7 @@ export default function Phase2Client() {
       visionName,
       visionShort,
     });
+    // Phase 1 affiche déjà le contexte + définition de la vision
     router.push(`/vision-phase1?${params.toString()}`);
   }
 
@@ -201,6 +214,8 @@ export default function Phase2Client() {
   const canGoToPart2 = !!part1.refinementText.trim() && !!stockSeries;
 
   function computeResults() {
+    if (isLocked) return;
+
     if (!stockSeries) {
       alert(
         "Le modèle de base (premier raffinement) est introuvable ou incomplet. Revenez au premier raffinement."
@@ -253,6 +268,11 @@ export default function Phase2Client() {
       return;
     }
 
+    if (!visionId) {
+      alert("Vision introuvable. Revenez à la liste des visions.");
+      return;
+    }
+
     const obj = results.objective;
     const period = results.targetPeriod;
 
@@ -301,8 +321,14 @@ export default function Phase2Client() {
     };
 
     saveSnapshotToLocalStorage(snapshot2);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(lockKey(visionId), "true");
+    }
+    setIsLocked(true);
+
     alert(
-      "Raffinement 2 enregistré : le modèle pivot (avec objectif de trésorerie) a été sauvegardé."
+      "Raffinement 2 enregistré : le modèle pivot (avec objectif de trésorerie) a été sauvegardé. Ce raffinement est maintenant figé."
     );
   }
 
@@ -319,10 +345,29 @@ export default function Phase2Client() {
           cursor: "pointer",
         }}
       >
-        ← Revenir au premier raffinement
+        ← Revenir à la définition de cette vision
       </button>
 
       <h1>Raffinement 2 – Partie {activePart === "part1" ? "1" : "2"}</h1>
+
+      {isLocked && (
+        <p
+          style={{
+            padding: "8px 12px",
+            borderRadius: 6,
+            backgroundColor: "#fef3c7",
+            border: "1px solid #facc15",
+            marginTop: 12,
+            marginBottom: 16,
+            fontSize: 14,
+          }}
+        >
+          Ce raffinement a été validé. Les données sont désormais figées. Vous
+          pouvez consulter la formulation et les résultats, mais plus les
+          modifier. Pour explorer une autre possibilité, créez une nouvelle
+          vision.
+        </p>
+      )}
 
       {/* Contexte */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
@@ -441,12 +486,14 @@ export default function Phase2Client() {
                 }))
               }
               rows={6}
+              disabled={isLocked}
               style={{
                 width: "100%",
                 padding: 8,
                 borderRadius: 4,
                 border: "1px solid #ccc",
                 resize: "vertical",
+                backgroundColor: isLocked ? "#f9fafb" : "white",
               }}
             />
           </div>
@@ -500,11 +547,13 @@ export default function Phase2Client() {
                     }))
                   }
                   placeholder="Ex : 10000"
+                  disabled={isLocked}
                   style={{
                     width: "100%",
                     padding: 8,
                     borderRadius: 4,
                     border: "1px solid #ccc",
+                    backgroundColor: isLocked ? "#f9fafb" : "white",
                   }}
                 />
               </div>
@@ -534,11 +583,13 @@ export default function Phase2Client() {
                     }))
                   }
                   placeholder="Ex : 12"
+                  disabled={isLocked}
                   style={{
                     width: "100%",
                     padding: 8,
                     borderRadius: 4,
                     border: "1px solid #ccc",
+                    backgroundColor: isLocked ? "#f9fafb" : "white",
                   }}
                 />
               </div>
@@ -546,13 +597,14 @@ export default function Phase2Client() {
               <div style={{ marginTop: 20 }}>
                 <button
                   onClick={computeResults}
+                  disabled={isLocked}
                   style={{
                     padding: "8px 20px",
                     borderRadius: 6,
                     border: "none",
-                    backgroundColor: "#2563eb",
+                    backgroundColor: isLocked ? "#9ca3af" : "#2563eb",
                     color: "white",
-                    cursor: "pointer",
+                    cursor: isLocked ? "not-allowed" : "pointer",
                     fontWeight: 600,
                   }}
                 >
@@ -673,13 +725,14 @@ export default function Phase2Client() {
                   <div style={{ marginTop: 24 }}>
                     <button
                       onClick={saveRefinement2Snapshot}
+                      disabled={isLocked}
                       style={{
                         padding: "10px 24px",
                         borderRadius: 6,
                         border: "none",
-                        backgroundColor: "#16a34a",
+                        backgroundColor: isLocked ? "#9ca3af" : "#16a34a",
                         color: "white",
-                        cursor: "pointer",
+                        cursor: isLocked ? "not-allowed" : "pointer",
                         fontWeight: 600,
                       }}
                     >
