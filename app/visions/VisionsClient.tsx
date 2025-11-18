@@ -233,7 +233,7 @@ export default function VisionsClient() {
                       cursor: "pointer",
                     }}
                   >
-                    Voir la définition longue
+                    Voir ou créer la définition longue
                   </button>
 
                   <button
