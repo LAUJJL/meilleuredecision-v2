@@ -1,74 +1,49 @@
-// app/vision-phase2/Phase2Client.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ModelSnapshot,
-  snapshotStorageKey,
-  saveSnapshotToLocalStorage,
-} from "@/lib/pivot";
 
-type Part1Data = {
-  refinementText: string;
+type ExplorationData = {
+  timeUnit: string;
+  horizon: string;
+  initialStock: string;
+  inflow: string;
+  outflow: string;
 };
 
-type Part2Data = {
-  objectiveValue: string;
-  targetPeriod: string;
+type StockRow = {
+  t: number;
+  stock: number;
+  inflow: number;
+  outflow: number;
+  delta: number;
 };
-
-type StockPoint = { t: number; value: number; margin?: number };
 
 export default function Phase2Client() {
   const router = useRouter();
 
-  // Contexte problème + vision
+  // Contexte problème + vision (transmis dans l'URL)
   const [problemName, setProblemName] = useState("");
   const [problemShort, setProblemShort] = useState("");
   const [visionId, setVisionId] = useState("");
   const [visionName, setVisionName] = useState("");
   const [visionShort, setVisionShort] = useState("");
 
-  // Partie 1 : texte du raffinement
-  const [part1, setPart1] = useState<Part1Data>({
-    refinementText: "",
+  // Données d'exploration du raffinement 2
+  const [data, setData] = useState<ExplorationData>({
+    timeUnit: "",
+    horizon: "",
+    initialStock: "",
+    inflow: "",
+    outflow: "",
   });
 
-  // Partie 2 : objectif & période
-  const [part2, setPart2] = useState<Part2Data>({
-    objectiveValue: "",
-    targetPeriod: "",
-  });
-
-  const [activePart, setActivePart] = useState<"part1" | "part2">("part1");
-
-  // Snapshot du raffinement 1 (modèle de base)
-  const [baseSnapshot, setBaseSnapshot] = useState<ModelSnapshot | null>(null);
-
-  // Résultats calculés pour la Partie 2
-  const [results, setResults] = useState<{
-    series: StockPoint[];
-    objective: number;
-    targetPeriod: number;
-    achieved: boolean;
-  } | null>(null);
-
-  // Raffinement 2 verrouillé ?
-  const [isLocked, setIsLocked] = useState(false);
-
-  // Clés de stockage local pour ce raffinement
-  function part1StorageKey(visionId: string) {
-    return `md_ref2_part1_${visionId}`;
-  }
-  function part2StorageKey(visionId: string) {
-    return `md_ref2_part2_${visionId}`;
-  }
-  function lockKey(visionId: string) {
-    return `md_refinement2_locked_${visionId}`;
+  // Clé de stockage local pour ce raffinement
+  function storageKey(vId: string) {
+    return `md_phase2_exploration_${vId}`;
   }
 
-  // Charger contexte + données + snapshot de base + verrouillage
+  // Charger contexte + données d'exploration
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -89,71 +64,25 @@ export default function Phase2Client() {
     if (!vId) return;
 
     try {
-      // Verrouillage
-      const lockedRaw = window.localStorage.getItem(lockKey(vId));
-      if (lockedRaw === "true") {
-        setIsLocked(true);
-      }
-
-      // Partie 1
-      const raw1 = window.localStorage.getItem(part1StorageKey(vId));
-      if (raw1) {
-        const parsed1 = JSON.parse(raw1) as Partial<Part1Data>;
-        if (parsed1.refinementText) {
-          setPart1((prev) => ({ ...prev, ...parsed1 }));
-        }
-      }
-
-      // Partie 2
-      const raw2 = window.localStorage.getItem(part2StorageKey(vId));
-      if (raw2) {
-        const parsed2 = JSON.parse(raw2) as Partial<Part2Data>;
-        setPart2((prev) => ({ ...prev, ...parsed2 }));
-      }
-
-      // Snapshot pivot du raffinement 1
-      const keyBase = snapshotStorageKey(vId, 1);
-      const rawBase = window.localStorage.getItem(keyBase);
-      if (rawBase) {
-        const parsedBase = JSON.parse(rawBase) as ModelSnapshot;
-        setBaseSnapshot(parsedBase);
+      const raw = window.localStorage.getItem(storageKey(vId));
+      if (raw) {
+        const parsed = JSON.parse(raw) as Partial<ExplorationData>;
+        setData((prev) => ({ ...prev, ...parsed }));
       }
     } catch (e) {
-      console.error("Erreur de chargement des données du raffinement 2 :", e);
+      console.error("Erreur de chargement des données de la phase 2 :", e);
     }
   }, []);
 
-  // Sauvegarde auto Part 1
+  // Sauvegarde automatique pour le confort du visiteur
   useEffect(() => {
-    if (typeof window === "undefined" || !visionId || isLocked) return;
+    if (!visionId || typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(
-        part1StorageKey(visionId),
-        JSON.stringify(part1)
-      );
+      window.localStorage.setItem(storageKey(visionId), JSON.stringify(data));
     } catch (e) {
-      console.error(
-        "Erreur d’enregistrement de la Partie 1 du raffinement 2 :",
-        e
-      );
+      console.error("Erreur d’enregistrement des données de la phase 2 :", e);
     }
-  }, [visionId, part1, isLocked]);
-
-  // Sauvegarde auto Part 2
-  useEffect(() => {
-    if (typeof window === "undefined" || !visionId || isLocked) return;
-    try {
-      window.localStorage.setItem(
-        part2StorageKey(visionId),
-        JSON.stringify(part2)
-      );
-    } catch (e) {
-      console.error(
-        "Erreur d’enregistrement de la Partie 2 du raffinement 2 :",
-        e
-      );
-    }
-  }, [visionId, part2, isLocked]);
+  }, [visionId, data]);
 
   function goBackToPhase1() {
     const params = new URLSearchParams({
@@ -163,34 +92,19 @@ export default function Phase2Client() {
       visionName,
       visionShort,
     });
-    // Phase 1 affiche déjà le contexte + définition de la vision
     router.push(`/vision-phase1?${params.toString()}`);
   }
 
-  // Série de trésorerie basée sur le snapshot de base (raffinement 1)
-  const stockSeries = useMemo(() => {
-    if (!baseSnapshot) return null;
-
-    const horizon = baseSnapshot.time.horizon;
-    const p = baseSnapshot.parameters;
-
-    const initial =
-      p.tresorerie_initiale && typeof p.tresorerie_initiale.value === "number"
-        ? p.tresorerie_initiale.value
-        : NaN;
-
-    const inflow =
-      p.flux_entree_constant && typeof p.flux_entree_constant.value === "number"
-        ? p.flux_entree_constant.value
-        : NaN;
-
-    const outflow =
-      p.flux_sortie_constant &&
-      typeof p.flux_sortie_constant.value === "number"
-        ? p.flux_sortie_constant.value
-        : NaN;
+  // Calcul du tableau d'évolution
+  const rows: StockRow[] | null = useMemo(() => {
+    const horizon = parseInt(data.horizon, 10);
+    const initial = parseFloat(data.initialStock);
+    const inflow = parseFloat(data.inflow);
+    const outflow = parseFloat(data.outflow);
 
     if (
+      !Number.isFinite(horizon) ||
+      horizon <= 0 ||
       !Number.isFinite(initial) ||
       !Number.isFinite(inflow) ||
       !Number.isFinite(outflow)
@@ -198,139 +112,38 @@ export default function Phase2Client() {
       return null;
     }
 
-    const series: StockPoint[] = [];
+    const result: StockRow[] = [];
     let current = initial;
-    series.push({ t: 0, value: current });
+
+    result.push({
+      t: 0,
+      stock: current,
+      inflow: inflow,
+      outflow: outflow,
+      delta: inflow - outflow,
+    });
 
     for (let t = 1; t <= horizon; t++) {
       current = current + inflow - outflow;
-      series.push({ t, value: current });
+      result.push({
+        t,
+        stock: current,
+        inflow: inflow,
+        outflow: outflow,
+        delta: inflow - outflow,
+      });
     }
 
-    return series;
-  }, [baseSnapshot]);
+    return result;
+  }, [data.horizon, data.initialStock, data.inflow, data.outflow]);
 
-  // Conditions pour accéder à la Partie 2
-  const canGoToPart2 = !!part1.refinementText.trim() && !!stockSeries;
-
-  function computeResults() {
-    if (isLocked) return;
-
-    if (!stockSeries) {
-      alert(
-        "Le modèle de base (premier raffinement) est introuvable ou incomplet. Revenez au premier raffinement."
-      );
-      return;
-    }
-
-    const obj = parseFloat(part2.objectiveValue);
-    const period = parseInt(part2.targetPeriod, 10);
-
-    if (!Number.isFinite(obj) || !Number.isFinite(period) || period < 0) {
-      alert(
-        "Merci de saisir un objectif (nombre) et un numéro de période valide (0, 1, 2, ...)."
-      );
-      return;
-    }
-
-    const horizon = stockSeries[stockSeries.length - 1]?.t ?? 0;
-    if (period > horizon) {
-      alert(
-        `La période choisie (${period}) dépasse l’horizon du modèle (${horizon}).`
-      );
-      return;
-    }
-
-    const seriesWithMargin: StockPoint[] = stockSeries.map((pt) => ({
-      ...pt,
-      margin: pt.value - obj,
-    }));
-
-    const valueAtPeriod = seriesWithMargin.find(
-      (pt) => pt.t === period
-    )?.value;
-    const achieved =
-      typeof valueAtPeriod === "number" ? valueAtPeriod >= obj : false;
-
-    setResults({
-      series: seriesWithMargin,
-      objective: obj,
-      targetPeriod: period,
-      achieved,
-    });
-  }
-
-  function saveRefinement2Snapshot() {
-    if (!baseSnapshot || !results) {
-      alert(
-        "Impossible d’enregistrer le raffinement : calculez d’abord les résultats."
-      );
-      return;
-    }
-
-    if (!visionId) {
-      alert("Vision introuvable. Revenez à la liste des visions.");
-      return;
-    }
-
-    const obj = results.objective;
-    const period = results.targetPeriod;
-
-    const snapshot2: ModelSnapshot = {
-      ...baseSnapshot,
-      meta: {
-        ...baseSnapshot.meta,
-        refinementIndex: 2,
-        parentRefinementIndex: 1,
-        validatedAt: new Date().toISOString(),
-      },
-      parameters: {
-        ...baseSnapshot.parameters,
-        objectif_tresorerie: {
-          type: "number",
-          value: obj,
-          unit: baseSnapshot.parameters.tresorerie_initiale?.unit,
-          description: "Objectif minimal de trésorerie à atteindre.",
-        },
-        periode_objectif: {
-          type: "number",
-          value: period,
-          unit: baseSnapshot.time.timeUnit,
-          description:
-            "Période à laquelle l’objectif doit être atteint (0 = début).",
-        },
-      },
-      auxiliaries: {
-        ...baseSnapshot.auxiliaries,
-        marge_tresorerie: {
-          unit: baseSnapshot.parameters.tresorerie_initiale?.unit,
-          description:
-            "Marge de trésorerie par rapport à l’objectif (tresorerie[t] - objectif).",
-          equation: "tresorerie[t] - objectif_tresorerie",
-        },
-      },
-      criteria: [
-        ...baseSnapshot.criteria,
-        {
-          name: "objectif_tresorerie_atteint_a_la_periode",
-          description:
-            "La trésorerie à la période cible est supérieure ou égale à l’objectif.",
-          equation: "tresorerie[periode_objectif] >= objectif_tresorerie",
-        },
-      ],
-    };
-
-    saveSnapshotToLocalStorage(snapshot2);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(lockKey(visionId), "true");
-    }
-    setIsLocked(true);
-
-    alert(
-      "Raffinement 2 enregistré : le modèle pivot (avec objectif de trésorerie) a été sauvegardé. Ce raffinement est maintenant figé."
-    );
-  }
+  const canShowTable =
+    !!data.timeUnit.trim() &&
+    !!data.horizon.trim() &&
+    !!data.initialStock.trim() &&
+    !!data.inflow.trim() &&
+    !!data.outflow.trim() &&
+    rows !== null;
 
   return (
     <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
@@ -345,29 +158,27 @@ export default function Phase2Client() {
           cursor: "pointer",
         }}
       >
-        ← Revenir à la définition de cette vision
+        ← Revenir au premier raffinement
       </button>
 
-      <h1>Raffinement 2 – Partie {activePart === "part1" ? "1" : "2"}</h1>
+      <h1>Raffinement 2 – Choisir l’unité de temps et l’horizon</h1>
 
-      {isLocked && (
-        <p
-          style={{
-            padding: "8px 12px",
-            borderRadius: 6,
-            backgroundColor: "#fef3c7",
-            border: "1px solid #facc15",
-            marginTop: 12,
-            marginBottom: 16,
-            fontSize: 14,
-          }}
-        >
-          Ce raffinement a été validé. Les données sont désormais figées. Vous
-          pouvez consulter la formulation et les résultats, mais plus les
-          modifier. Pour explorer une autre possibilité, créez une nouvelle
-          vision.
-        </p>
-      )}
+      <p
+        style={{
+          padding: "8px 12px",
+          borderRadius: 6,
+          backgroundColor: "#eff6ff",
+          border: "1px solid #bfdbfe",
+          marginTop: 12,
+          marginBottom: 16,
+          fontSize: 14,
+        }}
+      >
+        Ce raffinement sert à explorer différentes unités de temps et horizons.
+        Les valeurs que vous entrez ici (stock de départ et flux) servent
+        uniquement à tester des scénarios. Elles ne seront pas conservées comme
+        définitives pour les raffinements suivants.
+      </p>
 
       {/* Contexte */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
@@ -391,360 +202,289 @@ export default function Phase2Client() {
         )}
       </section>
 
-      {/* Onglets */}
-      <section style={{ marginBottom: 24 }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => setActivePart("part1")}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 6,
-              border:
-                activePart === "part1"
-                  ? "2px solid #2563eb"
-                  : "1px solid #d1d5db",
-              backgroundColor: activePart === "part1" ? "#eff6ff" : "white",
-              cursor: "pointer",
-              fontWeight: activePart === "part1" ? 600 : 400,
-            }}
-          >
-            Partie 1 – Formulation
-          </button>
+      {/* Formulaire d'exploration */}
+      <section
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 8,
+          padding: 24,
+          marginBottom: 32,
+        }}
+      >
+        <h2>Paramètres d’exploration</h2>
 
-          <button
-            onClick={() => {
-              if (!canGoToPart2) return;
-              setActivePart("part2");
-            }}
-            disabled={!canGoToPart2}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 6,
-              border:
-                activePart === "part2"
-                  ? "2px solid #2563eb"
-                  : "1px solid #d1d5db",
-              backgroundColor: activePart === "part2" ? "#eff6ff" : "white",
-              cursor: canGoToPart2 ? "pointer" : "not-allowed",
-              fontWeight: activePart === "part2" ? 600 : 400,
-              opacity: canGoToPart2 ? 1 : 0.5,
-            }}
+        <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
+          Choisissez une unité de temps, un horizon (nombre de périodes) et des
+          valeurs provisoires pour le stock de départ et les flux constants.
+          Vous pourrez modifier ces valeurs autant de fois que vous le
+          souhaitez pour voir comment le stock évolue.
+        </p>
+
+        {/* Unité de temps */}
+        <div style={{ marginTop: 16 }}>
+          <label
+            htmlFor="timeUnit"
+            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
-            Partie 2 – Objectif et résultats
-          </button>
+            Unité de temps
+          </label>
+          <input
+            id="timeUnit"
+            type="text"
+            value={data.timeUnit}
+            onChange={(e) =>
+              setData((prev) => ({ ...prev, timeUnit: e.target.value }))
+            }
+            placeholder="Ex : mois, années…"
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 4,
+              border: "1px solid #ccc",
+            }}
+          />
         </div>
-        {!canGoToPart2 && (
+
+        {/* Horizon */}
+        <div style={{ marginTop: 12 }}>
+          <label
+            htmlFor="horizon"
+            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+          >
+            Horizon (nombre de périodes)
+          </label>
+          <input
+            id="horizon"
+            type="number"
+            value={data.horizon}
+            onChange={(e) =>
+              setData((prev) => ({ ...prev, horizon: e.target.value }))
+            }
+            placeholder="Ex : 12"
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 4,
+              border: "1px solid #ccc",
+            }}
+          />
+        </div>
+
+        {/* Stock initial */}
+        <div style={{ marginTop: 12 }}>
+          <label
+            htmlFor="initialStock"
+            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+          >
+            Valeur provisoire du stock de départ
+          </label>
+          <input
+            id="initialStock"
+            type="number"
+            value={data.initialStock}
+            onChange={(e) =>
+              setData((prev) => ({ ...prev, initialStock: e.target.value }))
+            }
+            placeholder="Ex : 3000"
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 4,
+              border: "1px solid #ccc",
+            }}
+          />
+        </div>
+
+        {/* Flux d'entrée */}
+        <div style={{ marginTop: 12 }}>
+          <label
+            htmlFor="inflow"
+            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+          >
+            Flux d’entrée constant par période (provisoire)
+          </label>
+          <input
+            id="inflow"
+            type="number"
+            value={data.inflow}
+            onChange={(e) =>
+              setData((prev) => ({ ...prev, inflow: e.target.value }))
+            }
+            placeholder="Ex : 3000"
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 4,
+              border: "1px solid #ccc",
+            }}
+          />
+        </div>
+
+        {/* Flux de sortie */}
+        <div style={{ marginTop: 12 }}>
+          <label
+            htmlFor="outflow"
+            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+          >
+            Flux de sortie constant par période (provisoire)
+          </label>
+          <input
+            id="outflow"
+            type="number"
+            value={data.outflow}
+            onChange={(e) =>
+              setData((prev) => ({ ...prev, outflow: e.target.value }))
+            }
+            placeholder="Ex : 2500"
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 4,
+              border: "1px solid #ccc",
+            }}
+          />
+        </div>
+      </section>
+
+      {/* Tableau d'évolution */}
+      <section style={{ marginBottom: 32 }}>
+        <h2>Tableau d’évolution du stock</h2>
+
+        {!canShowTable ? (
           <p
             style={{
               marginTop: 8,
-              fontSize: 13,
+              fontSize: 14,
               color: "#6b7280",
             }}
           >
-            Pour accéder à la Partie 2, saisissez un texte de raffinement et
-            assurez-vous que le premier raffinement (stock et flux) est bien
-            défini.
+            Pour voir le tableau, indiquez l’unité de temps, l’horizon, la
+            valeur provisoire du stock de départ et les flux d’entrée et de
+            sortie.
           </p>
-        )}
-      </section>
-
-      {activePart === "part1" ? (
-        // -------- PARTIE 1 : TEXTE LIBRE --------
-        <section
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            padding: 24,
-            marginBottom: 32,
-          }}
-        >
-          <h2>Partie 1 – Formulation qualitative du raffinement</h2>
-
-          <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
-            Exprimez ici, en langage courant, le raffinement que vous souhaitez
-            apporter à cette vision. Par exemple :{" "}
-            <em>
-              &laquo; Je veux voir si ma trésorerie atteint 10&nbsp;000&nbsp;€
-              au bout de 12 mois. &raquo;
-            </em>
-          </p>
-
-          <div style={{ marginTop: 16 }}>
-            <label
-              htmlFor="refinement-text"
-              style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
-            >
-              Votre raffinement (texte libre)
-            </label>
-            <textarea
-              id="refinement-text"
-              value={part1.refinementText}
-              onChange={(e) =>
-                setPart1((prev) => ({
-                  ...prev,
-                  refinementText: e.target.value,
-                }))
-              }
-              rows={6}
-              disabled={isLocked}
+        ) : (
+          <>
+            <p
               style={{
-                width: "100%",
-                padding: 8,
-                borderRadius: 4,
-                border: "1px solid #ccc",
-                resize: "vertical",
-                backgroundColor: isLocked ? "#f9fafb" : "white",
+                marginTop: 8,
+                fontSize: 14,
+                color: "#4b5563",
               }}
-            />
-          </div>
-        </section>
-      ) : (
-        // -------- PARTIE 2 : OBJECTIF + RESULTATS --------
-        <section
-          style={{
-            border: "1px solid #ddd",
-            borderRadius: 8,
-            padding: 24,
-            marginBottom: 32,
-          }}
-        >
-          <h2>Partie 2 – Objectif de trésorerie et résultats</h2>
-
-          {!stockSeries ? (
-            <p style={{ marginTop: 8, color: "#b91c1c" }}>
-              Le modèle de base du premier raffinement est introuvable ou
-              incomplet. Revenez au premier raffinement pour le compléter.
+            >
+              Le tableau ci-dessous montre l’évolution du stock au fil des{" "}
+              {data.horizon} {data.timeUnit || "périodes"} avec les valeurs
+              provisoires que vous avez choisies. Vous pouvez modifier ces
+              valeurs pour tester d’autres scénarios.
             </p>
-          ) : (
-            <>
-              <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
-                À partir du stock et des flux définis au premier raffinement,
-                vous pouvez maintenant fixer un objectif de trésorerie et une
-                période à laquelle vous souhaitez qu’il soit atteint. Le site
-                calcule alors l’évolution de la trésorerie et indique si
-                l’objectif est atteint ou non.
-              </p>
 
-              <div style={{ marginTop: 16 }}>
-                <label
-                  htmlFor="objective-value"
-                  style={{
-                    display: "block",
-                    fontWeight: 600,
-                    marginBottom: 4,
-                  }}
-                >
-                  Objectif de trésorerie à atteindre
-                </label>
-                <input
-                  id="objective-value"
-                  type="number"
-                  value={part2.objectiveValue}
-                  onChange={(e) =>
-                    setPart2((prev) => ({
-                      ...prev,
-                      objectiveValue: e.target.value,
-                    }))
-                  }
-                  placeholder="Ex : 10000"
-                  disabled={isLocked}
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 4,
-                    border: "1px solid #ccc",
-                    backgroundColor: isLocked ? "#f9fafb" : "white",
-                  }}
-                />
-              </div>
-
-              <div style={{ marginTop: 12 }}>
-                <label
-                  htmlFor="target-period"
-                  style={{
-                    display: "block",
-                    fontWeight: 600,
-                    marginBottom: 4,
-                  }}
-                >
-                  Période à laquelle l’objectif doit être atteint
-                  {baseSnapshot?.time.timeUnit
-                    ? ` (en numéro de ${baseSnapshot.time.timeUnit} : 0, 1, 2, ...)`
-                    : " (0, 1, 2, ...)"}
-                </label>
-                <input
-                  id="target-period"
-                  type="number"
-                  value={part2.targetPeriod}
-                  onChange={(e) =>
-                    setPart2((prev) => ({
-                      ...prev,
-                      targetPeriod: e.target.value,
-                    }))
-                  }
-                  placeholder="Ex : 12"
-                  disabled={isLocked}
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 4,
-                    border: "1px solid #ccc",
-                    backgroundColor: isLocked ? "#f9fafb" : "white",
-                  }}
-                />
-              </div>
-
-              <div style={{ marginTop: 20 }}>
-                <button
-                  onClick={computeResults}
-                  disabled={isLocked}
-                  style={{
-                    padding: "8px 20px",
-                    borderRadius: 6,
-                    border: "none",
-                    backgroundColor: isLocked ? "#9ca3af" : "#2563eb",
-                    color: "white",
-                    cursor: isLocked ? "not-allowed" : "pointer",
-                    fontWeight: 600,
-                  }}
-                >
-                  Calculer les résultats
-                </button>
-              </div>
-
-              {results && (
-                <div style={{ marginTop: 24 }}>
-                  <h3>Résultat synthétique</h3>
-                  <p style={{ marginTop: 8 }}>
-                    À la période <strong>{results.targetPeriod}</strong>, la
-                    trésorerie vaut{" "}
-                    <strong>
-                      {
-                        results.series.find(
-                          (p) => p.t === results.targetPeriod
-                        )?.value.toFixed(2)
-                      }
-                    </strong>
-                    {baseSnapshot?.parameters.tresorerie_initiale?.unit
-                      ? ` ${baseSnapshot.parameters.tresorerie_initiale.unit}`
-                      : ""}{" "}
-                    pour un objectif de{" "}
-                    <strong>{results.objective.toFixed(2)}</strong>.
-                  </p>
-                  <p
-                    style={{
-                      marginTop: 4,
-                      color: results.achieved ? "#15803d" : "#b91c1c",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {results.achieved
-                      ? "✔ L’objectif est atteint ou dépassé à la période choisie."
-                      : "✖ L’objectif n’est pas atteint à la période choisie."}
-                  </p>
-
-                  <div style={{ marginTop: 20 }}>
-                    <h3>Tableau détaillé (trésorerie et marge)</h3>
-                    <div style={{ marginTop: 8, overflowX: "auto" }}>
-                      <table
-                        style={{
-                          borderCollapse: "collapse",
-                          width: "100%",
-                          minWidth: 360,
-                        }}
-                      >
-                        <thead>
-                          <tr>
-                            <th
-                              style={{
-                                border: "1px solid #e5e7eb",
-                                padding: "4px 8px",
-                                textAlign: "left",
-                              }}
-                            >
-                              Période
-                            </th>
-                            <th
-                              style={{
-                                border: "1px solid #e5e7eb",
-                                padding: "4px 8px",
-                                textAlign: "left",
-                              }}
-                            >
-                              Trésorerie
-                            </th>
-                            <th
-                              style={{
-                                border: "1px solid #e5e7eb",
-                                padding: "4px 8px",
-                                textAlign: "left",
-                              }}
-                            >
-                              Marge (trésorerie - objectif)
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {results.series.map((pt) => (
-                            <tr key={pt.t}>
-                              <td
-                                style={{
-                                  border: "1px solid #e5e7eb",
-                                  padding: "4px 8px",
-                                }}
-                              >
-                                {pt.t}
-                              </td>
-                              <td
-                                style={{
-                                  border: "1px solid #e5e7eb",
-                                  padding: "4px 8px",
-                                }}
-                              >
-                                {pt.value.toFixed(2)}
-                              </td>
-                              <td
-                                style={{
-                                  border: "1px solid #e5e7eb",
-                                  padding: "4px 8px",
-                                  color:
-                                    (pt.margin ?? 0) >= 0
-                                      ? "#15803d"
-                                      : "#b91c1c",
-                                }}
-                              >
-                                {(pt.margin ?? 0).toFixed(2)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 24 }}>
-                    <button
-                      onClick={saveRefinement2Snapshot}
-                      disabled={isLocked}
+            <div style={{ marginTop: 12, overflowX: "auto" }}>
+              <table
+                style={{
+                  borderCollapse: "collapse",
+                  width: "100%",
+                  minWidth: 480,
+                }}
+              >
+                <thead>
+                  <tr>
+                    <th
                       style={{
-                        padding: "10px 24px",
-                        borderRadius: 6,
-                        border: "none",
-                        backgroundColor: isLocked ? "#9ca3af" : "#16a34a",
-                        color: "white",
-                        cursor: isLocked ? "not-allowed" : "pointer",
-                        fontWeight: 600,
+                        border: "1px solid #e5e7eb",
+                        padding: "4px 8px",
+                        textAlign: "left",
                       }}
                     >
-                      Valider ce raffinement et enregistrer le modèle
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </section>
-      )}
+                      Période
+                    </th>
+                    <th
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        padding: "4px 8px",
+                        textAlign: "left",
+                      }}
+                    >
+                      Stock
+                    </th>
+                    <th
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        padding: "4px 8px",
+                        textAlign: "left",
+                      }}
+                    >
+                      Flux d’entrée
+                    </th>
+                    <th
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        padding: "4px 8px",
+                        textAlign: "left",
+                      }}
+                    >
+                      Flux de sortie
+                    </th>
+                    <th
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        padding: "4px 8px",
+                        textAlign: "left",
+                      }}
+                    >
+                      Variation nette (entrée - sortie)
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows!.map((row) => (
+                    <tr key={row.t}>
+                      <td
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          padding: "4px 8px",
+                        }}
+                      >
+                        {row.t}
+                      </td>
+                      <td
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          padding: "4px 8px",
+                        }}
+                      >
+                        {row.stock.toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          padding: "4px 8px",
+                        }}
+                      >
+                        {row.inflow.toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          padding: "4px 8px",
+                        }}
+                      >
+                        {row.outflow.toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          padding: "4px 8px",
+                        }}
+                      >
+                        {row.delta.toFixed(2)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
     </main>
   );
 }
