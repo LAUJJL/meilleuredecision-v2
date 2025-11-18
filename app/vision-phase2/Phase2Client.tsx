@@ -12,11 +12,12 @@ type ExplorationData = {
 };
 
 type StockRow = {
-  t: number;
-  stock: number;
+  period: number;       // 1, 2, 3, ...
+  stockStart: number;   // début de période
+  stockEnd: number;     // fin de période
   inflow: number;
   outflow: number;
-  delta: number;
+  delta: number;        // inflow - outflow
 };
 
 export default function Phase2Client() {
@@ -113,25 +114,23 @@ export default function Phase2Client() {
     }
 
     const result: StockRow[] = [];
-    let current = initial;
+    let current = initial; // stock au début de la période 1
 
-    result.push({
-      t: 0,
-      stock: current,
-      inflow: inflow,
-      outflow: outflow,
-      delta: inflow - outflow,
-    });
+    for (let period = 1; period <= horizon; period++) {
+      const stockStart = current;
+      const delta = inflow - outflow;
+      const stockEnd = stockStart + delta;
 
-    for (let t = 1; t <= horizon; t++) {
-      current = current + inflow - outflow;
       result.push({
-        t,
-        stock: current,
-        inflow: inflow,
-        outflow: outflow,
-        delta: inflow - outflow,
+        period,
+        stockStart,
+        stockEnd,
+        inflow,
+        outflow,
+        delta,
       });
+
+      current = stockEnd; // début de la période suivante
     }
 
     return result;
@@ -371,10 +370,10 @@ export default function Phase2Client() {
                 color: "#4b5563",
               }}
             >
-              Le tableau ci-dessous montre l’évolution du stock au fil des{" "}
-              {data.horizon} {data.timeUnit || "périodes"} avec les valeurs
-              provisoires que vous avez choisies. Vous pouvez modifier ces
-              valeurs pour tester d’autres scénarios.
+              Le tableau ci-dessous montre, pour chaque période numérotée de 1 à{" "}
+              {data.horizon}, le stock au début et à la fin de la période, ainsi
+              que les flux et la variation nette. Vous pouvez modifier les
+              valeurs ci-dessus pour explorer d’autres scénarios.
             </p>
 
             <div style={{ marginTop: 12, overflowX: "auto" }}>
@@ -382,7 +381,7 @@ export default function Phase2Client() {
                 style={{
                   borderCollapse: "collapse",
                   width: "100%",
-                  minWidth: 480,
+                  minWidth: 560,
                 }}
               >
                 <thead>
@@ -403,7 +402,7 @@ export default function Phase2Client() {
                         textAlign: "left",
                       }}
                     >
-                      Stock
+                      Stock début de période
                     </th>
                     <th
                       style={{
@@ -432,18 +431,27 @@ export default function Phase2Client() {
                     >
                       Variation nette (entrée - sortie)
                     </th>
+                    <th
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        padding: "4px 8px",
+                        textAlign: "left",
+                      }}
+                    >
+                      Stock fin de période
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows!.map((row) => (
-                    <tr key={row.t}>
+                    <tr key={row.period}>
                       <td
                         style={{
                           border: "1px solid #e5e7eb",
                           padding: "4px 8px",
                         }}
                       >
-                        {row.t}
+                        {row.period}
                       </td>
                       <td
                         style={{
@@ -451,7 +459,7 @@ export default function Phase2Client() {
                           padding: "4px 8px",
                         }}
                       >
-                        {row.stock.toFixed(2)}
+                        {row.stockStart.toFixed(2)}
                       </td>
                       <td
                         style={{
@@ -476,6 +484,14 @@ export default function Phase2Client() {
                         }}
                       >
                         {row.delta.toFixed(2)}
+                      </td>
+                      <td
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          padding: "4px 8px",
+                        }}
+                      >
+                        {row.stockEnd.toFixed(2)}
                       </td>
                     </tr>
                   ))}
