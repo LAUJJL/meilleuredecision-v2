@@ -1,3 +1,4 @@
+// app/vision-phase2/Phase2Client.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -39,6 +40,8 @@ export default function Phase2Client() {
     outflow: "",
   });
 
+  const [loaded, setLoaded] = useState(false);
+
   // Clé de stockage local pour ce raffinement
   function storageKey(vId: string) {
     return `md_phase2_exploration_${vId}`;
@@ -62,17 +65,19 @@ export default function Phase2Client() {
     setVisionName(vName);
     setVisionShort(vShort);
 
-    if (!vId) return;
-
-    try {
-      const raw = window.localStorage.getItem(storageKey(vId));
-      if (raw) {
-        const parsed = JSON.parse(raw) as Partial<ExplorationData>;
-        setData((prev) => ({ ...prev, ...parsed }));
+    if (vId) {
+      try {
+        const raw = window.localStorage.getItem(storageKey(vId));
+        if (raw) {
+          const parsed = JSON.parse(raw) as Partial<ExplorationData>;
+          setData((prev) => ({ ...prev, ...parsed }));
+        }
+      } catch (e) {
+        console.error("Erreur de chargement des données de la phase 2 :", e);
       }
-    } catch (e) {
-      console.error("Erreur de chargement des données de la phase 2 :", e);
     }
+
+    setLoaded(true);
   }, []);
 
   // Sauvegarde automatique pour le confort du visiteur
@@ -130,7 +135,7 @@ export default function Phase2Client() {
         delta,
       });
 
-      current = stockEnd; // début de la période suivante
+      current = stockEnd;
     }
 
     return result;
@@ -143,6 +148,70 @@ export default function Phase2Client() {
     !!data.inflow.trim() &&
     !!data.outflow.trim() &&
     rows !== null;
+
+  // Pour passer au raffinement 3, il faut au minimum une unité de temps et un horizon valides.
+  const canGoToPhase3 =
+    !!data.timeUnit.trim() &&
+    !!data.horizon.trim() &&
+    Number.isFinite(parseInt(data.horizon, 10)) &&
+    parseInt(data.horizon, 10) > 0;
+
+  function handleGoToPhase3() {
+    if (!visionId) {
+      alert("Vision introuvable. Revenez à la liste des visions.");
+      return;
+    }
+
+    const horizon = parseInt(data.horizon, 10);
+    if (!Number.isFinite(horizon) || horizon <= 0) {
+      alert("L’horizon doit être un entier strictement positif.");
+      return;
+    }
+    if (!data.timeUnit.trim()) {
+      alert("Merci de préciser une unité de temps (mois, années, etc.).");
+      return;
+    }
+
+    // On s'assure que les dernières données sont bien sauvegardées
+    try {
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(storageKey(visionId), JSON.stringify(data));
+      }
+    } catch (e) {
+      console.error(
+        "Erreur d’enregistrement des données avant passage au raffinement 3 :",
+        e
+      );
+    }
+
+    const params = new URLSearchParams({
+      problemName,
+      problemShort,
+      visionId,
+      visionName,
+      visionShort,
+    });
+    router.push(`/vision-phase3?${params.toString()}`);
+  }
+
+  if (!loaded) {
+    return (
+      <main style={{ padding: 20 }}>
+        <p>Chargement…</p>
+      </main>
+    );
+  }
+
+  if (!visionId) {
+    return (
+      <main style={{ padding: 20 }}>
+        <p>
+          Vision introuvable. Revenez à la liste des visions et relancez le
+          raffinement 2.
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
@@ -174,9 +243,14 @@ export default function Phase2Client() {
         }}
       >
         Ce raffinement sert à explorer différentes unités de temps et horizons.
-        Les valeurs que vous entrez ici (stock de départ et flux) servent
-        uniquement à tester des scénarios. Elles ne seront pas conservées comme
-        définitives pour les raffinements suivants.
+        Les valeurs que vous entrez ici pour le stock de départ et les flux
+        servent uniquement à tester des scénarios (elles ne seront pas
+        conservées comme définitives).{" "}
+        <strong>
+          En revanche, l’unité de temps et l’horizon que vous aurez choisis
+          seront utilisés comme cadre temporel dans le raffinement suivant. Ils
+          deviendront définitifs une fois le raffinement 3 validé.
+        </strong>
       </p>
 
       {/* Contexte */}
@@ -499,6 +573,39 @@ export default function Phase2Client() {
               </table>
             </div>
           </>
+        )}
+      </section>
+
+      {/* Passage au raffinement 3 */}
+      <section style={{ marginBottom: 40 }}>
+        <button
+          onClick={handleGoToPhase3}
+          disabled={!canGoToPhase3}
+          style={{
+            padding: "10px 24px",
+            borderRadius: 6,
+            border: "none",
+            backgroundColor: canGoToPhase3 ? "#2563eb" : "#9ca3af",
+            color: "white",
+            cursor: canGoToPhase3 ? "pointer" : "not-allowed",
+            fontWeight: 600,
+          }}
+        >
+          Valider l’unité de temps et l’horizon et passer au raffinement 3
+        </button>
+        {!canGoToPhase3 && (
+          <p
+            style={{
+              marginTop: 8,
+              fontSize: 13,
+              color: "#6b7280",
+            }}
+          >
+            Pour continuer, indiquez au moins une unité de temps et un horizon
+            (nombre de périodes strictement positif). Vous pouvez affiner les
+            valeurs du stock de départ et des flux autant que vous le souhaitez
+            avant de passer au raffinement 3.
+          </p>
         )}
       </section>
     </main>
