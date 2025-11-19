@@ -3,8 +3,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  ModelSnapshot,
+  snapshotStorageKey,
+  saveSnapshotToLocalStorage,
+} from "@/lib/pivot";
 
-type ExplorationData = {
+type TrialData = {
   timeUnit: string;
   horizon: string;
   initialStock: string;
@@ -13,26 +18,26 @@ type ExplorationData = {
 };
 
 type StockRow = {
-  period: number;       // 1, 2, 3, ...
-  stockStart: number;   // début de période
-  stockEnd: number;     // fin de période
+  period: number;
+  start: number;
   inflow: number;
   outflow: number;
-  delta: number;        // inflow - outflow
+  delta: number;
+  end: number;
 };
 
 export default function Phase2Client() {
   const router = useRouter();
 
-  // Contexte problème + vision (transmis dans l'URL)
+  // Contexte problème + vision
   const [problemName, setProblemName] = useState("");
   const [problemShort, setProblemShort] = useState("");
   const [visionId, setVisionId] = useState("");
   const [visionName, setVisionName] = useState("");
   const [visionShort, setVisionShort] = useState("");
 
-  // Données d'exploration du raffinement 2
-  const [data, setData] = useState<ExplorationData>({
+  // Données d'essai pour explorer (unités, horizon, valeurs)
+  const [trial, setTrial] = useState<TrialData>({
     timeUnit: "",
     horizon: "",
     initialStock: "",
@@ -40,14 +45,20 @@ export default function Phase2Client() {
     outflow: "",
   });
 
-  const [loaded, setLoaded] = useState(false);
+  // Snapshot pivot du raffinement 1 (base) et indicateur de verrouillage
+  const [baseSnapshot, setBaseSnapshot] = useState<ModelSnapshot | null>(null);
+  const [isLocked, setIsLocked] = useState(false);
 
-  // Clé de stockage local pour ce raffinement
-  function storageKey(vId: string) {
-    return `md_phase2_exploration_${vId}`;
+  // ---- localStorage helpers ----
+  function trialStorageKey(visionId: string) {
+    return `md_phase2_trial_${visionId}`;
+  }
+  function lockKey(visionId: string) {
+    // même clé que celle utilisée par le raffinement 3
+    return `md_refinement2_locked_${visionId}`;
   }
 
-  // Charger contexte + données d'exploration
+  // Chargement du contexte, de l'état d'essai et du snapshot de Phase 1
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -65,30 +76,57 @@ export default function Phase2Client() {
     setVisionName(vName);
     setVisionShort(vShort);
 
-    if (vId) {
-      try {
-        const raw = window.localStorage.getItem(storageKey(vId));
-        if (raw) {
-          const parsed = JSON.parse(raw) as Partial<ExplorationData>;
-          setData((prev) => ({ ...prev, ...parsed }));
-        }
-      } catch (e) {
-        console.error("Erreur de chargement des données de la phase 2 :", e);
-      }
-    }
+    if (!vId) return;
 
-    setLoaded(true);
+    try {
+      // Verrouillage éventuel du raffinement 2
+      const lockedRaw = window.localStorage.getItem(lockKey(vId));
+      if (lockedRaw === "true") {
+        setIsLocked(true);
+      }
+
+      // État d’essai déjà saisi pour ce raffinement
+      const rawTrial = window.localStorage.getItem(trialStorageKey(vId));
+      if (rawTrial) {
+        const parsed = JSON.parse(rawTrial) as Partial<TrialData>;
+        setTrial((prev) => ({ ...prev, ...parsed }));
+      }
+
+      // Snapshot pivot du raffinement 1 (base)
+      const keyBase = snapshotStorageKey(vId, 1);
+      const rawBase = window.localStorage.getItem(keyBase);
+      if (rawBase) {
+        const parsedBase = JSON.parse(rawBase) as ModelSnapshot;
+        setBaseSnapshot(parsedBase);
+
+        // Si aucune unité / horizon n’a été saisi, proposer les valeurs de base
+        setTrial((prev) => ({
+          ...prev,
+          timeUnit: prev.timeUnit || parsedBase.time.timeUnit || "",
+          horizon:
+            prev.horizon ||
+            (Number.isFinite(parsedBase.time.horizon)
+              ? String(parsedBase.time.horizon)
+              : ""),
+        }));
+      }
+    } catch (e) {
+      console.error("Erreur de chargement du raffinement 2 :", e);
+    }
   }, []);
 
-  // Sauvegarde automatique pour le confort du visiteur
+  // Sauvegarde automatique des données d'essai
   useEffect(() => {
-    if (!visionId || typeof window === "undefined") return;
+    if (typeof window === "undefined" || !visionId || isLocked) return;
     try {
-      window.localStorage.setItem(storageKey(visionId), JSON.stringify(data));
+      window.localStorage.setItem(
+        trialStorageKey(visionId),
+        JSON.stringify(trial)
+      );
     } catch (e) {
-      console.error("Erreur d’enregistrement des données de la phase 2 :", e);
+      console.error("Erreur d’enregistrement des données du raffinement 2 :", e);
     }
-  }, [visionId, data]);
+  }, [visionId, trial, isLocked]);
 
   function goBackToPhase1() {
     const params = new URLSearchParams({
@@ -101,12 +139,12 @@ export default function Phase2Client() {
     router.push(`/vision-phase1?${params.toString()}`);
   }
 
-  // Calcul du tableau d'évolution
-  const rows: StockRow[] | null = useMemo(() => {
-    const horizon = parseInt(data.horizon, 10);
-    const initial = parseFloat(data.initialStock);
-    const inflow = parseFloat(data.inflow);
-    const outflow = parseFloat(data.outflow);
+  // Tableau d'évolution du stock (pour exploration uniquement)
+  const stockTable = useMemo<StockRow[] | null>(() => {
+    const horizon = parseInt(trial.horizon, 10);
+    const initial = parseFloat(trial.initialStock);
+    const inflow = parseFloat(trial.inflow);
+    const outflow = parseFloat(trial.outflow);
 
     if (
       !Number.isFinite(horizon) ||
@@ -118,99 +156,102 @@ export default function Phase2Client() {
       return null;
     }
 
-    const result: StockRow[] = [];
-    let current = initial; // stock au début de la période 1
+    const rows: StockRow[] = [];
+    let currentStart = initial;
 
     for (let period = 1; period <= horizon; period++) {
-      const stockStart = current;
       const delta = inflow - outflow;
-      const stockEnd = stockStart + delta;
+      const end = currentStart + delta;
 
-      result.push({
+      rows.push({
         period,
-        stockStart,
-        stockEnd,
+        start: currentStart,
         inflow,
         outflow,
         delta,
+        end,
       });
 
-      current = stockEnd;
+      currentStart = end;
     }
 
-    return result;
-  }, [data.horizon, data.initialStock, data.inflow, data.outflow]);
+    return rows;
+  }, [trial.horizon, trial.initialStock, trial.inflow, trial.outflow]);
 
-  const canShowTable =
-    !!data.timeUnit.trim() &&
-    !!data.horizon.trim() &&
-    !!data.initialStock.trim() &&
-    !!data.inflow.trim() &&
-    !!data.outflow.trim() &&
-    rows !== null;
+  const canValidate =
+    !!trial.timeUnit.trim() &&
+    !!trial.horizon.trim() &&
+    baseSnapshot !== null &&
+    !isLocked;
 
-  // Pour passer au raffinement 3, il faut au minimum une unité de temps et un horizon valides.
-  const canGoToPhase3 =
-    !!data.timeUnit.trim() &&
-    !!data.horizon.trim() &&
-    Number.isFinite(parseInt(data.horizon, 10)) &&
-    parseInt(data.horizon, 10) > 0;
-
-  function handleGoToPhase3() {
+  // Validation : on fige l’unité de temps et l’horizon dans le pivot (raffinement 2)
+  function handleValidateAndGoNext() {
     if (!visionId) {
       alert("Vision introuvable. Revenez à la liste des visions.");
       return;
     }
+    if (!baseSnapshot) {
+      alert(
+        "Le modèle du raffinement 1 est introuvable ou incomplet. Revenez au premier raffinement."
+      );
+      return;
+    }
 
-    const horizon = parseInt(data.horizon, 10);
-    if (!Number.isFinite(horizon) || horizon <= 0) {
+    const horizonInt = parseInt(trial.horizon, 10);
+    const timeUnit = trial.timeUnit.trim();
+
+    if (!Number.isFinite(horizonInt) || horizonInt <= 0) {
       alert("L’horizon doit être un entier strictement positif.");
       return;
     }
-    if (!data.timeUnit.trim()) {
-      alert("Merci de préciser une unité de temps (mois, années, etc.).");
+    if (!timeUnit) {
+      alert("Merci de saisir une unité de temps (par exemple : mois).");
       return;
     }
 
-    // On s'assure que les dernières données sont bien sauvegardées
     try {
+      const snapshot2: ModelSnapshot = {
+        ...baseSnapshot,
+        meta: {
+          ...baseSnapshot.meta,
+          refinementIndex: 2,
+          parentRefinementIndex: 1,
+          validatedAt: new Date().toISOString(),
+        },
+        time: {
+          ...baseSnapshot.time,
+          timeUnit,
+          horizon: horizonInt,
+        },
+        // Les paramètres numériques (valeurs des flux et du stock de départ)
+        // restent ceux définis à l’étape 1. Ici on ne fige que le cadre temps.
+      };
+
+      saveSnapshotToLocalStorage(snapshot2);
+
       if (typeof window !== "undefined") {
-        window.localStorage.setItem(storageKey(visionId), JSON.stringify(data));
+        window.localStorage.setItem(lockKey(visionId), "true");
       }
+      setIsLocked(true);
+
+      const params = new URLSearchParams({
+        problemName,
+        problemShort,
+        visionId,
+        visionName,
+        visionShort,
+      });
+
+      router.push(`/vision-phase3?${params.toString()}`);
     } catch (e) {
       console.error(
-        "Erreur d’enregistrement des données avant passage au raffinement 3 :",
+        "Erreur lors de la création du snapshot du raffinement 2 :",
         e
       );
+      alert(
+        "Une erreur est survenue lors de la validation de ce raffinement. Réessayez plus tard."
+      );
     }
-
-    const params = new URLSearchParams({
-      problemName,
-      problemShort,
-      visionId,
-      visionName,
-      visionShort,
-    });
-    router.push(`/vision-phase3?${params.toString()}`);
-  }
-
-  if (!loaded) {
-    return (
-      <main style={{ padding: 20 }}>
-        <p>Chargement…</p>
-      </main>
-    );
-  }
-
-  if (!visionId) {
-    return (
-      <main style={{ padding: 20 }}>
-        <p>
-          Vision introuvable. Revenez à la liste des visions et relancez le
-          raffinement 2.
-        </p>
-      </main>
-    );
   }
 
   return (
@@ -229,29 +270,24 @@ export default function Phase2Client() {
         ← Revenir au premier raffinement
       </button>
 
-      <h1>Raffinement 2 – Choisir l’unité de temps et l’horizon</h1>
+      <h1>Raffinement 2 – Unité de temps et horizon</h1>
 
-      <p
-        style={{
-          padding: "8px 12px",
-          borderRadius: 6,
-          backgroundColor: "#eff6ff",
-          border: "1px solid #bfdbfe",
-          marginTop: 12,
-          marginBottom: 16,
-          fontSize: 14,
-        }}
-      >
-        Ce raffinement sert à explorer différentes unités de temps et horizons.
-        Les valeurs que vous entrez ici pour le stock de départ et les flux
-        servent uniquement à tester des scénarios (elles ne seront pas
-        conservées comme définitives).{" "}
-        <strong>
-          En revanche, l’unité de temps et l’horizon que vous aurez choisis
-          seront utilisés comme cadre temporel dans le raffinement suivant. Ils
-          deviendront définitifs une fois le raffinement 3 validé.
-        </strong>
-      </p>
+      {isLocked && (
+        <p
+          style={{
+            padding: "8px 12px",
+            borderRadius: 6,
+            backgroundColor: "#fef3c7",
+            border: "1px solid #facc15",
+            marginTop: 12,
+            marginBottom: 16,
+            fontSize: 14,
+          }}
+        >
+          Ce raffinement a été validé. L’unité de temps et l’horizon sont
+          désormais figés pour cette vision.
+        </p>
+      )}
 
       {/* Contexte */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
@@ -275,7 +311,29 @@ export default function Phase2Client() {
         )}
       </section>
 
-      {/* Formulaire d'exploration */}
+      {/* Explication du rôle du raffinement 2 */}
+      <section
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 8,
+          padding: 24,
+          marginBottom: 32,
+        }}
+      >
+        <h2>But de ce raffinement</h2>
+        <p style={{ marginTop: 8, fontSize: 14, color: "#4b5563" }}>
+          Dans ce deuxième raffinement, vous choisissez{" "}
+          <strong>l’unité de temps</strong> et <strong>l’horizon</strong> qui
+          serviront de cadre pour tous les raffinements suivants. Vous pouvez
+          tester différentes valeurs de stock de départ et de flux pour voir
+          comment le stock évolue, mais ces valeurs ne seront pas conservées
+          comme définitives : seule la combinaison{" "}
+          <strong>unité de temps + horizon</strong> sera figée si vous passez au
+          raffinement 3.
+        </p>
+      </section>
+
+      {/* Formulaire et tableau d'exploration */}
       <section
         style={{
           border: "1px solid #ddd",
@@ -284,178 +342,171 @@ export default function Phase2Client() {
           marginBottom: 32,
         }}
       >
-        <h2>Paramètres d’exploration</h2>
+        <h2>Choisir l’unité de temps, l’horizon et tester des valeurs</h2>
 
-        <p style={{ fontSize: 14, color: "#4b5563", marginTop: 8 }}>
-          Choisissez une unité de temps, un horizon (nombre de périodes) et des
-          valeurs provisoires pour le stock de départ et les flux constants.
-          Vous pourrez modifier ces valeurs autant de fois que vous le
-          souhaitez pour voir comment le stock évolue.
-        </p>
+        {!baseSnapshot && (
+          <p style={{ marginTop: 8, color: "#b91c1c" }}>
+            Le modèle de base (raffinement 1) est introuvable ou incomplet.
+            Revenez au premier raffinement pour le compléter.
+          </p>
+        )}
 
-        {/* Unité de temps */}
         <div style={{ marginTop: 16 }}>
           <label
-            htmlFor="timeUnit"
+            htmlFor="time-unit"
             style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
-            Unité de temps
+            Unité de temps (sera figée à partir du raffinement 3)
           </label>
           <input
-            id="timeUnit"
+            id="time-unit"
             type="text"
-            value={data.timeUnit}
+            value={trial.timeUnit}
             onChange={(e) =>
-              setData((prev) => ({ ...prev, timeUnit: e.target.value }))
+              setTrial((prev) => ({ ...prev, timeUnit: e.target.value }))
             }
-            placeholder="Ex : mois, années…"
+            placeholder="Ex : mois"
+            disabled={isLocked}
             style={{
               width: "100%",
               padding: 8,
               borderRadius: 4,
               border: "1px solid #ccc",
+              backgroundColor: isLocked ? "#f9fafb" : "white",
             }}
           />
         </div>
 
-        {/* Horizon */}
         <div style={{ marginTop: 12 }}>
           <label
             htmlFor="horizon"
             style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
-            Horizon (nombre de périodes)
+            Horizon (nombre de périodes, sera figé à partir du raffinement 3)
           </label>
           <input
             id="horizon"
             type="number"
-            value={data.horizon}
+            value={trial.horizon}
             onChange={(e) =>
-              setData((prev) => ({ ...prev, horizon: e.target.value }))
+              setTrial((prev) => ({ ...prev, horizon: e.target.value }))
             }
             placeholder="Ex : 12"
+            disabled={isLocked}
             style={{
               width: "100%",
               padding: 8,
               borderRadius: 4,
               border: "1px solid #ccc",
+              backgroundColor: isLocked ? "#f9fafb" : "white",
             }}
           />
         </div>
 
-        {/* Stock initial */}
-        <div style={{ marginTop: 12 }}>
-          <label
-            htmlFor="initialStock"
-            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
-          >
-            Valeur provisoire du stock de départ
-          </label>
-          <input
-            id="initialStock"
-            type="number"
-            value={data.initialStock}
-            onChange={(e) =>
-              setData((prev) => ({ ...prev, initialStock: e.target.value }))
-            }
-            placeholder="Ex : 3000"
-            style={{
-              width: "100%",
-              padding: 8,
-              borderRadius: 4,
-              border: "1px solid #ccc",
-            }}
-          />
-        </div>
-
-        {/* Flux d'entrée */}
-        <div style={{ marginTop: 12 }}>
-          <label
-            htmlFor="inflow"
-            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
-          >
-            Flux d’entrée constant par période (provisoire)
-          </label>
-          <input
-            id="inflow"
-            type="number"
-            value={data.inflow}
-            onChange={(e) =>
-              setData((prev) => ({ ...prev, inflow: e.target.value }))
-            }
-            placeholder="Ex : 3000"
-            style={{
-              width: "100%",
-              padding: 8,
-              borderRadius: 4,
-              border: "1px solid #ccc",
-            }}
-          />
-        </div>
-
-        {/* Flux de sortie */}
-        <div style={{ marginTop: 12 }}>
-          <label
-            htmlFor="outflow"
-            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
-          >
-            Flux de sortie constant par période (provisoire)
-          </label>
-          <input
-            id="outflow"
-            type="number"
-            value={data.outflow}
-            onChange={(e) =>
-              setData((prev) => ({ ...prev, outflow: e.target.value }))
-            }
-            placeholder="Ex : 2500"
-            style={{
-              width: "100%",
-              padding: 8,
-              borderRadius: 4,
-              border: "1px solid #ccc",
-            }}
-          />
-        </div>
-      </section>
-
-      {/* Tableau d'évolution */}
-      <section style={{ marginBottom: 32 }}>
-        <h2>Tableau d’évolution du stock</h2>
-
-        {!canShowTable ? (
-          <p
-            style={{
-              marginTop: 8,
-              fontSize: 14,
-              color: "#6b7280",
-            }}
-          >
-            Pour voir le tableau, indiquez l’unité de temps, l’horizon, la
-            valeur provisoire du stock de départ et les flux d’entrée et de
-            sortie.
+        <div style={{ marginTop: 20 }}>
+          <h3>Valeurs d’essai pour explorer le stock</h3>
+          <p style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>
+            Ces valeurs servent uniquement à explorer. Elles ne seront pas
+            conservées comme définitives dans le pivot.
           </p>
-        ) : (
-          <>
-            <p
-              style={{
-                marginTop: 8,
-                fontSize: 14,
-                color: "#4b5563",
-              }}
-            >
-              Le tableau ci-dessous montre, pour chaque période numérotée de 1 à{" "}
-              {data.horizon}, le stock au début et à la fin de la période, ainsi
-              que les flux et la variation nette. Vous pouvez modifier les
-              valeurs ci-dessus pour explorer d’autres scénarios.
-            </p>
 
-            <div style={{ marginTop: 12, overflowX: "auto" }}>
+          <div style={{ marginTop: 12 }}>
+            <label
+              htmlFor="initial-stock"
+              style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+            >
+              Stock de départ (valeur d’essai)
+            </label>
+            <input
+              id="initial-stock"
+              type="number"
+              value={trial.initialStock}
+              onChange={(e) =>
+                setTrial((prev) => ({
+                  ...prev,
+                  initialStock: e.target.value,
+                }))
+              }
+              placeholder="Ex : 3000"
+              disabled={isLocked}
+              style={{
+                width: "100%",
+                padding: 8,
+                borderRadius: 4,
+                border: "1px solid #ccc",
+                backgroundColor: isLocked ? "#f9fafb" : "white",
+              }}
+            />
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <label
+              htmlFor="inflow"
+              style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+            >
+              Flux d’entrée constant (valeur d’essai)
+            </label>
+            <input
+              id="inflow"
+              type="number"
+              value={trial.inflow}
+              onChange={(e) =>
+                setTrial((prev) => ({ ...prev, inflow: e.target.value }))
+              }
+              placeholder="Ex : 3000"
+              disabled={isLocked}
+              style={{
+                width: "100%",
+                padding: 8,
+                borderRadius: 4,
+                border: "1px solid #ccc",
+                backgroundColor: isLocked ? "#f9fafb" : "white",
+              }}
+            />
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <label
+              htmlFor="outflow"
+              style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+            >
+              Flux de sortie constant (valeur d’essai)
+            </label>
+            <input
+              id="outflow"
+              type="number"
+              value={trial.outflow}
+              onChange={(e) =>
+                setTrial((prev) => ({ ...prev, outflow: e.target.value }))
+              }
+              placeholder="Ex : 2500"
+              disabled={isLocked}
+              style={{
+                width: "100%",
+                padding: 8,
+                borderRadius: 4,
+                border: "1px solid #ccc",
+                backgroundColor: isLocked ? "#f9fafb" : "white",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Tableau exploratoire */}
+        <div style={{ marginTop: 20 }}>
+          <h3>Évolution du stock sur l’horizon choisi</h3>
+          {!stockTable ? (
+            <p style={{ marginTop: 8, fontSize: 14, color: "#6b7280" }}>
+              Pour voir le tableau, saisissez une unité de temps, un horizon et
+              des valeurs pour le stock de départ et les flux.
+            </p>
+          ) : (
+            <div style={{ marginTop: 8, overflowX: "auto" }}>
               <table
                 style={{
                   borderCollapse: "collapse",
                   width: "100%",
-                  minWidth: 560,
+                  minWidth: 480,
                 }}
               >
                 <thead>
@@ -503,7 +554,7 @@ export default function Phase2Client() {
                         textAlign: "left",
                       }}
                     >
-                      Variation nette (entrée - sortie)
+                      Variation nette
                     </th>
                     <th
                       style={{
@@ -517,7 +568,7 @@ export default function Phase2Client() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows!.map((row) => (
+                  {stockTable.map((row) => (
                     <tr key={row.period}>
                       <td
                         style={{
@@ -533,7 +584,7 @@ export default function Phase2Client() {
                           padding: "4px 8px",
                         }}
                       >
-                        {row.stockStart.toFixed(2)}
+                        {row.start.toFixed(2)}
                       </td>
                       <td
                         style={{
@@ -565,35 +616,35 @@ export default function Phase2Client() {
                           padding: "4px 8px",
                         }}
                       >
-                        {row.stockEnd.toFixed(2)}
+                        {row.end.toFixed(2)}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </>
-        )}
+          )}
+        </div>
       </section>
 
-      {/* Passage au raffinement 3 */}
+      {/* Bouton de validation */}
       <section style={{ marginBottom: 40 }}>
         <button
-          onClick={handleGoToPhase3}
-          disabled={!canGoToPhase3}
+          onClick={handleValidateAndGoNext}
+          disabled={!canValidate}
           style={{
             padding: "10px 24px",
             borderRadius: 6,
             border: "none",
-            backgroundColor: canGoToPhase3 ? "#2563eb" : "#9ca3af",
+            backgroundColor: canValidate ? "#2563eb" : "#9ca3af",
             color: "white",
-            cursor: canGoToPhase3 ? "pointer" : "not-allowed",
+            cursor: canValidate ? "pointer" : "not-allowed",
             fontWeight: 600,
           }}
         >
           Valider l’unité de temps et l’horizon et passer au raffinement 3
         </button>
-        {!canGoToPhase3 && (
+        {!canValidate && !isLocked && (
           <p
             style={{
               marginTop: 8,
@@ -601,10 +652,8 @@ export default function Phase2Client() {
               color: "#6b7280",
             }}
           >
-            Pour continuer, indiquez au moins une unité de temps et un horizon
-            (nombre de périodes strictement positif). Vous pouvez affiner les
-            valeurs du stock de départ et des flux autant que vous le souhaitez
-            avant de passer au raffinement 3.
+            Pour valider, saisissez une unité de temps, un horizon et assurez-vous
+            que le raffinement 1 a bien été validé.
           </p>
         )}
       </section>
