@@ -1,3 +1,4 @@
+// app/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,7 +11,35 @@ type Problem = {
 };
 
 const PROBLEMS_STORAGE_KEY = "md_problems_v1";
+const VISIONS_STORAGE_PREFIX = "md_visions_v1_";
 
+/**
+ * Nettoie toutes les données (raffinements, snapshots, etc.)
+ * associées à une vision, en supprimant les clés de localStorage
+ * qui contiennent son id.
+ */
+function cleanupVisionLocalData(visionId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      // On ne touche qu’aux clés du site (préfixe md_)
+      // et qui contiennent l’id de la vision.
+      if (key.startsWith("md_") && key.includes(visionId)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+  } catch (e) {
+    console.error("Erreur lors du nettoyage des données de la vision :", e);
+  }
+}
+
+/**
+ * Charge la liste des problèmes depuis localStorage.
+ */
 function loadProblems(): Problem[] {
   if (typeof window === "undefined") return [];
   try {
@@ -25,12 +54,46 @@ function loadProblems(): Problem[] {
   }
 }
 
+/**
+ * Sauvegarde la liste des problèmes dans localStorage.
+ */
 function saveProblems(list: Problem[]) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PROBLEMS_STORAGE_KEY, JSON.stringify(list));
   } catch (e) {
     console.error("Erreur d’enregistrement des problèmes :", e);
+  }
+}
+
+/**
+ * Supprime toutes les visions d’un problème (la liste elle-même)
+ * et toutes les données associées aux raffinements de ces visions.
+ */
+function deleteAllVisionsForProblem(problemId: string) {
+  if (typeof window === "undefined") return;
+
+  const visionsKey = `${VISIONS_STORAGE_PREFIX}${problemId}`;
+  try {
+    const raw = window.localStorage.getItem(visionsKey);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        // On s’attend à ce que chaque vision ait un id
+        parsed.forEach((v: { id?: string }) => {
+          if (v && typeof v.id === "string") {
+            cleanupVisionLocalData(v.id);
+          }
+        });
+      }
+    }
+    // On supprime la liste des visions du problème
+    window.localStorage.removeItem(visionsKey);
+  } catch (e) {
+    console.error(
+      "Erreur lors de la suppression des visions du problème :",
+      e
+    );
   }
 }
 
@@ -56,6 +119,17 @@ export default function ProblemsPage() {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
+    // 1) Empêcher deux problèmes avec le même nom (insensible à la casse)
+    const alreadyExists = problems.some(
+      (p) => p.name.trim().toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (alreadyExists) {
+      alert(
+        "Un problème portant déjà ce nom existe. Merci de choisir un nom différent."
+      );
+      return;
+    }
+
     const newProblem: Problem = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
       name: trimmedName,
@@ -67,12 +141,24 @@ export default function ProblemsPage() {
     setShortDef("");
   }
 
-  function handleDeleteProblem(id: string) {
-    setProblems((prev) => prev.filter((p) => p.id !== id));
+  function handleDeleteProblem(problem: Problem) {
+    const confirmDelete = window.confirm(
+      `Supprimer le problème « ${problem.name} » et toutes ses visions ?\n` +
+        "Cette action effacera aussi les raffinements associés aux visions."
+    );
+    if (!confirmDelete) return;
+
+    // 1) Nettoyer les visions + raffinements de ce problème
+    deleteAllVisionsForProblem(problem.id);
+
+    // 2) Supprimer le problème dans la liste
+    setProblems((prev) => prev.filter((p) => p.id !== problem.id));
   }
 
   function goToVisions(problem: Problem) {
+    // On passe désormais aussi l’id du problème dans l’URL
     const params = new URLSearchParams({
+      problemId: problem.id,
       problemName: problem.name,
       problemShort: problem.shortDef,
     });
@@ -208,7 +294,7 @@ export default function ProblemsPage() {
                   </button>
 
                   <button
-                    onClick={() => handleDeleteProblem(p.id)}
+                    onClick={() => handleDeleteProblem(p)}
                     style={{
                       padding: "6px 12px",
                       borderRadius: 4,
