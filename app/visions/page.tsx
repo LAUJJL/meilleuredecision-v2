@@ -1,28 +1,42 @@
 // app/visions/page.tsx
 import VisionsClient from "./VisionsClient";
 
-type SearchParams = { [key: string]: string | string[] | undefined };
-
-function firstValue(value: string | string[] | undefined): string {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value) && value.length > 0) return value[0];
-  return "";
-}
+type SearchParams = {
+  [key: string]: string | string[] | undefined;
+};
 
 export default function VisionsPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  const problemId = firstValue(searchParams.problemId);
-  const problemName = firstValue(searchParams.problemName);
-  const problemShort = firstValue(searchParams.problemShort);
+  const problemId =
+    typeof searchParams.problemId === "string" ? searchParams.problemId : "";
+
+  const problemNameParam =
+    typeof searchParams.problemName === "string"
+      ? searchParams.problemName.trim()
+      : "";
+
+  const problemShortParam =
+    typeof searchParams.problemShort === "string"
+      ? searchParams.problemShort.trim()
+      : "";
+
+  // On ne complique plus : si le nom est dans l'URL, on l'utilise.
+  // Sinon, on affiche un texte générique.
+  const problemName =
+    problemNameParam && problemNameParam.length > 0
+      ? problemNameParam
+      : "(problème sans nom)";
+
+  const problemShort = problemShortParam;
 
   return (
     <VisionsClient
       problemId={problemId}
-      initialProblemName={problemName}
-      initialProblemShort={problemShort}
+      problemName={problemName}
+      problemShort={problemShort}
     />
   );
 }
