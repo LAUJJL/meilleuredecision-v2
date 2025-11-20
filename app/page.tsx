@@ -1,4 +1,3 @@
-// app/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,93 +6,34 @@ import { useRouter } from "next/navigation";
 type Problem = {
   id: string;
   name: string;
-  shortDef: string;
+  short: string;
 };
 
-const PROBLEMS_STORAGE_KEY = "md_problems_v1";
-const VISIONS_STORAGE_PREFIX = "md_visions_v1_";
+const STORAGE_KEYS = ["md_problems_v1", "md_problems"];
 
-/**
- * Nettoie toutes les données (raffinements, snapshots, etc.)
- * associées à une vision, en supprimant les clés de localStorage
- * qui contiennent son id.
- */
-function cleanupVisionLocalData(visionId: string) {
-  if (typeof window === "undefined") return;
-  try {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const key = window.localStorage.key(i);
-      if (!key) continue;
-      // On ne touche qu’aux clés du site (préfixe md_)
-      // et qui contiennent l’id de la vision.
-      if (key.startsWith("md_") && key.includes(visionId)) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach((k) => window.localStorage.removeItem(k));
-  } catch (e) {
-    console.error("Erreur lors du nettoyage des données de la vision :", e);
-  }
-}
-
-/**
- * Charge la liste des problèmes depuis localStorage.
- */
 function loadProblems(): Problem[] {
   if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(PROBLEMS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch (e) {
-    console.error("Erreur de lecture des problèmes :", e);
-    return [];
-  }
-}
-
-/**
- * Sauvegarde la liste des problèmes dans localStorage.
- */
-function saveProblems(list: Problem[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PROBLEMS_STORAGE_KEY, JSON.stringify(list));
-  } catch (e) {
-    console.error("Erreur d’enregistrement des problèmes :", e);
-  }
-}
-
-/**
- * Supprime toutes les visions d’un problème (la liste elle-même)
- * et toutes les données associées aux raffinements de ces visions.
- */
-function deleteAllVisionsForProblem(problemId: string) {
-  if (typeof window === "undefined") return;
-
-  const visionsKey = `${VISIONS_STORAGE_PREFIX}${problemId}`;
-  try {
-    const raw = window.localStorage.getItem(visionsKey);
+  for (const key of STORAGE_KEYS) {
+    const raw = window.localStorage.getItem(key);
     if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        // On s’attend à ce que chaque vision ait un id
-        parsed.forEach((v: { id?: string }) => {
-          if (v && typeof v.id === "string") {
-            cleanupVisionLocalData(v.id);
-          }
-        });
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed as Problem[];
+        }
+      } catch {
+        // on ignore et on essaye la clé suivante
       }
     }
-    // On supprime la liste des visions du problème
-    window.localStorage.removeItem(visionsKey);
-  } catch (e) {
-    console.error(
-      "Erreur lors de la suppression des visions du problème :",
-      e
-    );
+  }
+  return [];
+}
+
+function saveProblems(problems: Problem[]) {
+  if (typeof window === "undefined") return;
+  const raw = JSON.stringify(problems);
+  for (const key of STORAGE_KEYS) {
+    window.localStorage.setItem(key, raw);
   }
 }
 
@@ -101,145 +41,148 @@ export default function ProblemsPage() {
   const router = useRouter();
 
   const [problems, setProblems] = useState<Problem[]>([]);
-  const [name, setName] = useState("");
-  const [shortDef, setShortDef] = useState("");
+  const [nameInput, setNameInput] = useState("");
+  const [shortInput, setShortInput] = useState("");
 
-  // Charger les problèmes au montage
+  // Charger la liste au montage
   useEffect(() => {
     const initial = loadProblems();
     setProblems(initial);
   }, []);
 
-  // Sauvegarder à chaque modification
-  useEffect(() => {
-    saveProblems(problems);
-  }, [problems]);
+  function createProblem() {
+    const trimmedName = nameInput.trim();
+    const trimmedShort = shortInput.trim();
 
-  function handleCreateProblem() {
-    const trimmedName = name.trim();
-    if (!trimmedName) return;
-
-    // 1) Empêcher deux problèmes avec le même nom (insensible à la casse)
-    const alreadyExists = problems.some(
-      (p) => p.name.trim().toLowerCase() === trimmedName.toLowerCase()
-    );
-    if (alreadyExists) {
-      alert(
-        "Un problème portant déjà ce nom existe. Merci de choisir un nom différent."
-      );
+    if (!trimmedName) {
+      alert("Merci de donner un nom au problème.");
       return;
     }
 
     const newProblem: Problem = {
-      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      id: "pb_" + Date.now().toString(36),
       name: trimmedName,
-      shortDef: shortDef.trim(),
+      short: trimmedShort,
     };
 
-    setProblems((prev) => [...prev, newProblem]);
-    setName("");
-    setShortDef("");
+    const updated = [...problems, newProblem];
+    setProblems(updated);
+    saveProblems(updated);
+
+    setNameInput("");
+    setShortInput("");
   }
 
-  function handleDeleteProblem(problem: Problem) {
-    const confirmDelete = window.confirm(
-      `Supprimer le problème « ${problem.name} » et toutes ses visions ?\n` +
-        "Cette action effacera aussi les raffinements associés aux visions."
-    );
-    if (!confirmDelete) return;
-
-    // 1) Nettoyer les visions + raffinements de ce problème
-    deleteAllVisionsForProblem(problem.id);
-
-    // 2) Supprimer le problème dans la liste
-    setProblems((prev) => prev.filter((p) => p.id !== problem.id));
-  }
-
-  function goToVisions(problem: Problem) {
-    // On passe désormais aussi l’id du problème dans l’URL
+  function openVisions(problem: Problem) {
     const params = new URLSearchParams({
       problemId: problem.id,
       problemName: problem.name,
-      problemShort: problem.shortDef,
+      problemShort: problem.short ?? "",
     });
+
     router.push(`/visions?${params.toString()}`);
+  }
+
+  function deleteProblem(problem: Problem) {
+    if (
+      !confirm(
+        `Supprimer le problème « ${problem.name} » et toutes ses visions ?`
+      )
+    ) {
+      return;
+    }
+
+    const updated = problems.filter((p) => p.id !== problem.id);
+    setProblems(updated);
+    saveProblems(updated);
+
+    if (typeof window !== "undefined") {
+      // au minimum on efface les visions associées à ce problème
+      const prefix = `md_visions_${problem.id}_`;
+      for (const key of Object.keys(window.localStorage)) {
+        if (key.startsWith(prefix)) {
+          window.localStorage.removeItem(key);
+        }
+      }
+    }
   }
 
   return (
     <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
       <h1>Problèmes (liste)</h1>
-      <p style={{ marginBottom: 24 }}>
+
+      <p style={{ marginTop: 8, color: "#4b5563" }}>
         Cette page remplace l’ancien « Accueil » : ici, vous créez et gérez vos
         problèmes. Chaque problème pourra ensuite avoir plusieurs visions, puis
         des raffinements par phases.
       </p>
 
-      {/* Création d’un nouveau problème */}
+      {/* Création d'un nouveau problème */}
       <section
         style={{
-          border: "1px solid #ddd",
+          marginTop: 24,
+          padding: 16,
           borderRadius: 8,
-          padding: 24,
-          marginBottom: 32,
+          border: "1px solid #e5e7eb",
         }}
       >
         <h2>Créer un nouveau problème</h2>
 
-        <div style={{ marginTop: 16, marginBottom: 12 }}>
+        <div style={{ marginTop: 12 }}>
           <label
-            htmlFor="new-problem-name"
+            htmlFor="problem-name"
             style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
             Nom du problème
           </label>
           <input
-            id="new-problem-name"
+            id="problem-name"
             type="text"
+            value={nameInput}
+            onChange={(e) => setNameInput(e.target.value)}
             placeholder="Ex : Trésorerie d’une petite entreprise"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
             style={{
               width: "100%",
               padding: 8,
               borderRadius: 4,
-              border: "1px solid #ccc",
+              border: "1px solid #d1d5db",
             }}
           />
         </div>
 
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginTop: 12 }}>
           <label
-            htmlFor="new-problem-short"
+            htmlFor="problem-short"
             style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
             Définition courte (facultative)
           </label>
-          <textarea
-            id="new-problem-short"
+          <input
+            id="problem-short"
+            type="text"
+            value={shortInput}
+            onChange={(e) => setShortInput(e.target.value)}
             placeholder="Quelques mots pour distinguer ce problème des autres."
-            value={shortDef}
-            onChange={(e) => setShortDef(e.target.value)}
-            rows={2}
             style={{
               width: "100%",
               padding: 8,
               borderRadius: 4,
-              border: "1px solid #ccc",
-              resize: "vertical",
+              border: "1px solid #d1d5db",
             }}
           />
         </div>
 
         <button
-          onClick={handleCreateProblem}
-          disabled={!name.trim()}
+          onClick={createProblem}
           style={{
-            padding: "8px 20px",
-            borderRadius: 4,
+            marginTop: 16,
+            padding: "8px 16px",
+            borderRadius: 6,
             border: "none",
-            backgroundColor: name.trim() ? "#2563eb" : "#9ca3af",
+            backgroundColor: "#2563eb",
             color: "white",
-            cursor: name.trim() ? "pointer" : "not-allowed",
+            fontWeight: 600,
+            cursor: "pointer",
           }}
         >
           Créer ce problème
@@ -247,64 +190,64 @@ export default function ProblemsPage() {
       </section>
 
       {/* Liste des problèmes existants */}
-      <section>
+      <section style={{ marginTop: 32 }}>
         <h2>Problèmes existants</h2>
 
         {problems.length === 0 ? (
-          <p style={{ marginTop: 12 }}>
+          <p style={{ marginTop: 8, color: "#6b7280" }}>
             Aucun problème pour l’instant. Créez-en un ci-dessus.
           </p>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, marginTop: 16 }}>
-            {problems.map((p) => (
+          <ul style={{ listStyle: "none", padding: 0, marginTop: 12 }}>
+            {problems.map((pb) => (
               <li
-                key={p.id}
+                key={pb.id}
                 style={{
                   border: "1px solid #e5e7eb",
                   borderRadius: 8,
-                  padding: 16,
-                  marginBottom: 12,
+                  padding: 12,
+                  marginBottom: 8,
                   display: "flex",
-                  flexDirection: "column",
-                  gap: 8,
+                  justifyContent: "space-between",
+                  alignItems: "center",
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600 }}>{p.name}</div>
-                  {p.shortDef && (
-                    <div style={{ color: "#4b5563", fontSize: 14 }}>
-                      {p.shortDef}
+                  <div style={{ fontWeight: 600 }}>{pb.name}</div>
+                  {pb.short && (
+                    <div style={{ fontSize: 14, color: "#6b7280" }}>
+                      {pb.short}
                     </div>
                   )}
                 </div>
-
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <div style={{ display: "flex", gap: 8 }}>
                   <button
-                    onClick={() => goToVisions(p)}
+                    onClick={() => openVisions(pb)}
                     style={{
                       padding: "6px 12px",
-                      borderRadius: 4,
+                      borderRadius: 6,
                       border: "1px solid #2563eb",
                       backgroundColor: "white",
                       color: "#2563eb",
                       cursor: "pointer",
+                      fontSize: 14,
                     }}
                   >
                     Voir, créer ou effacer les visions de ce problème
                   </button>
-
                   <button
-                    onClick={() => handleDeleteProblem(p)}
+                    onClick={() => deleteProblem(pb)}
                     style={{
                       padding: "6px 12px",
-                      borderRadius: 4,
-                      border: "none",
-                      backgroundColor: "#ef4444",
-                      color: "white",
+                      borderRadius: 6,
+                      border: "1px solid #dc2626",
+                      backgroundColor: "white",
+                      color: "#dc2626",
                       cursor: "pointer",
+                      fontSize: 14,
                     }}
                   >
-                    Supprimer ce problème
+                    Supprimer
                   </button>
                 </div>
               </li>
