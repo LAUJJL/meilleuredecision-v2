@@ -14,14 +14,13 @@ type Problem = {
   id: string;
   name: string;
   short?: string;
-  createdAt?: string;
 };
 
-const PROBLEMS_STORAGE_KEY = "md_problems_v1";
+const PROBLEMS_KEYS = ["md_problems_v2", "md_problems_v1", "md_problems"];
 
-// Nouvelle clé : on indexe les visions par problemId
 function visionsStorageKey(problemId: string) {
-  return `md_visions_v2_${problemId}`;
+  // stockage des visions par identifiant de problème
+  return `md_visions_v1_${problemId}`;
 }
 
 export default function VisionsClient({
@@ -35,57 +34,75 @@ export default function VisionsClient({
 }) {
   const router = useRouter();
 
-  // Contexte problème
+  // Nom du problème affiché dans la page
   const [problemName, setProblemName] = useState(initialProblemName || "");
   const [problemShort, setProblemShort] = useState(initialProblemShort || "");
 
-  // Visions
   const [visions, setVisions] = useState<Vision[]>([]);
   const [newName, setNewName] = useState("");
   const [newShort, setNewShort] = useState("");
 
-  // 1) Recharger le problème à partir de son id (source unique de vérité)
+  // 1) Essayer de retrouver le problème en localStorage (pour être cohérent),
+  //    mais SANS afficher "problème inconnu" si on ne le trouve pas.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (!problemId) return;
+
+    if (!problemId) {
+      // Pas d'id : on garde simplement les valeurs passées dans l'URL
+      return;
+    }
 
     try {
-      const raw = window.localStorage.getItem(PROBLEMS_STORAGE_KEY);
-      if (!raw) return;
+      let found: Problem | undefined;
 
-      const list: Problem[] = JSON.parse(raw);
-      const found = list.find((p) => p.id === problemId);
+      for (const key of PROBLEMS_KEYS) {
+        const raw = window.localStorage.getItem(key);
+        if (!raw) continue;
+
+        const parsed = JSON.parse(raw) as Problem[] | unknown;
+        if (!Array.isArray(parsed)) continue;
+
+        const match = (parsed as Problem[]).find((p) => p.id === problemId);
+        if (match) {
+          found = match;
+          break;
+        }
+      }
+
       if (found) {
-        setProblemName(found.name);
-        setProblemShort(found.short || "");
+        if (found.name && !initialProblemName) {
+          setProblemName(found.name);
+        }
+        if (found.short && !initialProblemShort) {
+          setProblemShort(found.short);
+        }
+      } else {
+        // Si on ne trouve rien, on NE met pas de message d’erreur,
+        // on garde simplement le nom fourni dans l’URL.
       }
     } catch (e) {
-      console.error("Erreur de lecture du problème :", e);
+      console.error("Erreur lors de la lecture des problèmes :", e);
     }
-  }, [problemId]);
+  }, [problemId, initialProblemName, initialProblemShort]);
 
   // 2) Charger les visions pour ce problème
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!problemId) return;
-
+    if (typeof window === "undefined" || !problemId) return;
     try {
       const raw = window.localStorage.getItem(visionsStorageKey(problemId));
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        setVisions(parsed);
+        setVisions(parsed as Vision[]);
       }
     } catch (e) {
       console.error("Erreur de lecture des visions :", e);
     }
   }, [problemId]);
 
-  // 3) Sauvegarder les visions dès que la liste change
+  // 3) Sauvegarder dès que la liste change
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (!problemId) return;
-
+    if (typeof window === "undefined" || !problemId) return;
     try {
       window.localStorage.setItem(
         visionsStorageKey(problemId),
@@ -119,6 +136,24 @@ export default function VisionsClient({
     router.push("/");
   }
 
+  function goToVisionDefinition(v: Vision) {
+    const params = new URLSearchParams({
+      problemId: problemId || "",
+      problemName: problemName || "",
+      problemShort: problemShort || "",
+      visionId: v.id,
+      visionName: v.name,
+      visionShort: v.shortDef,
+    });
+
+    router.push(`/vision?${params.toString()}`);
+  }
+
+  const displayProblemName =
+    problemName && problemName.trim().length > 0
+      ? problemName
+      : "(problème sans nom)";
+
   return (
     <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
       <button
@@ -137,12 +172,11 @@ export default function VisionsClient({
 
       <h1>Visions du problème</h1>
 
-      {/* Contexte du problème */}
+      {/* Contexte problème */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
         <h2>Problème sélectionné</h2>
         <p>
-          <strong>Nom :</strong>{" "}
-          {problemName || "(problème inconnu – id non trouvé)"}
+          <strong>Nom :</strong> {displayProblemName}
         </p>
         {problemShort && (
           <p>
@@ -225,7 +259,7 @@ export default function VisionsClient({
         </button>
       </section>
 
-      {/* Liste des visions */}
+      {/* Liste des visions existantes */}
       <section>
         <h2>Visions existantes pour ce problème</h2>
 
@@ -249,19 +283,23 @@ export default function VisionsClient({
                 <div>
                   <div style={{ fontWeight: 600 }}>{v.name}</div>
                   {v.shortDef && (
-                    <div style={{ color: "#4b5563", fontSize: 14 }}>
+                    <div
+                      style={{ color: "#4b5563", fontSize: 14 }}
+                    >
                       {v.shortDef}
                     </div>
                   )}
                 </div>
 
-                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginTop: 8,
+                  }}
+                >
                   <button
-                    onClick={() =>
-                      alert(
-                        "Plus tard : ici on ira vers la définition longue et les raffinements de cette vision."
-                      )
-                    }
+                    onClick={() => goToVisionDefinition(v)}
                     style={{
                       padding: "6px 12px",
                       borderRadius: 4,
