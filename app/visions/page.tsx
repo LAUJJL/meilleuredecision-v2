@@ -3,27 +3,26 @@ import VisionsClient from "./VisionsClient";
 
 type SearchParams = { [key: string]: string | string[] | undefined };
 
+function getSingle(value: string | string[] | undefined): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.length > 0) return value[0];
+  return "";
+}
+
 export default function VisionsPage({
   searchParams,
 }: {
   searchParams: SearchParams;
 }) {
-  const rawId = searchParams.problemId;
-  const rawName = searchParams.problemName;
-  const rawShort = searchParams.problemShort;
-
-  const problemId =
-    typeof rawId === "string" ? rawId : rawId?.[0] ?? "";
-  const problemName =
-    typeof rawName === "string" ? rawName : rawName?.[0] ?? "";
-  const problemShort =
-    typeof rawShort === "string" ? rawShort : rawShort?.[0] ?? "";
+  const problemId = getSingle(searchParams.problemId);
+  const problemNameFromUrl = getSingle(searchParams.problemName);
+  const problemShortFromUrl = getSingle(searchParams.problemShort);
 
   return (
     <VisionsClient
       problemId={problemId}
-      problemName={problemName}
-      problemShort={problemShort}
+      initialProblemName={problemNameFromUrl}
+      initialProblemShort={problemShortFromUrl}
     />
   );
 }
