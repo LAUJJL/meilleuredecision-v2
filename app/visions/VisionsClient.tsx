@@ -10,53 +10,67 @@ type Vision = {
   shortDef: string;
 };
 
-const VISIONS_STORAGE_PREFIX = "md_visions_v1_";
+type Problem = {
+  id: string;
+  name: string;
+  short?: string;
+  createdAt?: string;
+};
 
-/**
- * Nettoie toutes les données (raffinements, snapshots, etc.)
- * associées à une vision.
- */
-function cleanupVisionLocalData(visionId: string) {
-  if (typeof window === "undefined") return;
-  try {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < window.localStorage.length; i++) {
-      const key = window.localStorage.key(i);
-      if (!key) continue;
-      if (key.startsWith("md_") && key.includes(visionId)) {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach((k) => window.localStorage.removeItem(k));
-  } catch (e) {
-    console.error("Erreur lors du nettoyage des données de la vision :", e);
-  }
-}
+const PROBLEMS_STORAGE_KEY = "md_problems_v1";
 
-function storageKey(problemId: string) {
-  return `${VISIONS_STORAGE_PREFIX}${problemId}`;
+// Nouvelle clé : on indexe les visions par problemId
+function visionsStorageKey(problemId: string) {
+  return `md_visions_v2_${problemId}`;
 }
 
 export default function VisionsClient({
   problemId,
-  problemName,
-  problemShort,
+  initialProblemName,
+  initialProblemShort,
 }: {
   problemId: string;
-  problemName: string;
-  problemShort: string;
+  initialProblemName: string;
+  initialProblemShort: string;
 }) {
   const router = useRouter();
 
+  // Contexte problème
+  const [problemName, setProblemName] = useState(initialProblemName || "");
+  const [problemShort, setProblemShort] = useState(initialProblemShort || "");
+
+  // Visions
   const [visions, setVisions] = useState<Vision[]>([]);
   const [newName, setNewName] = useState("");
   const [newShort, setNewShort] = useState("");
 
-  // Charger les visions pour ce problème
+  // 1) Recharger le problème à partir de son id (source unique de vérité)
   useEffect(() => {
-    if (!problemId || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
+    if (!problemId) return;
+
     try {
-      const raw = window.localStorage.getItem(storageKey(problemId));
+      const raw = window.localStorage.getItem(PROBLEMS_STORAGE_KEY);
+      if (!raw) return;
+
+      const list: Problem[] = JSON.parse(raw);
+      const found = list.find((p) => p.id === problemId);
+      if (found) {
+        setProblemName(found.name);
+        setProblemShort(found.short || "");
+      }
+    } catch (e) {
+      console.error("Erreur de lecture du problème :", e);
+    }
+  }, [problemId]);
+
+  // 2) Charger les visions pour ce problème
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!problemId) return;
+
+    try {
+      const raw = window.localStorage.getItem(visionsStorageKey(problemId));
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -67,12 +81,14 @@ export default function VisionsClient({
     }
   }, [problemId]);
 
-  // Sauvegarder dès que la liste change
+  // 3) Sauvegarder les visions dès que la liste change
   useEffect(() => {
-    if (!problemId || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
+    if (!problemId) return;
+
     try {
       window.localStorage.setItem(
-        storageKey(problemId),
+        visionsStorageKey(problemId),
         JSON.stringify(visions)
       );
     } catch (e) {
@@ -82,18 +98,7 @@ export default function VisionsClient({
 
   function handleCreateVision() {
     const trimmed = newName.trim();
-    if (!trimmed) return;
-
-    // Unicité du nom de vision pour un même problème (insensible à la casse)
-    const alreadyExists = visions.some(
-      (v) => v.name.trim().toLowerCase() === trimmed.toLowerCase()
-    );
-    if (alreadyExists) {
-      alert(
-        "Une vision portant déjà ce nom existe pour ce problème. Merci de choisir un nom différent."
-      );
-      return;
-    }
+    if (!trimmed || !problemId) return;
 
     const newVision: Vision = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -107,35 +112,11 @@ export default function VisionsClient({
   }
 
   function handleDeleteVision(id: string) {
-    const vision = visions.find((v) => v.id === id);
-    const confirmDelete = window.confirm(
-      vision
-        ? `Supprimer la vision « ${vision.name} » et tous ses raffinements ?`
-        : "Supprimer cette vision et tous ses raffinements ?"
-    );
-    if (!confirmDelete) return;
-
-    // Nettoyage des raffinements de cette vision
-    cleanupVisionLocalData(id);
-
-    // Suppression dans la liste
     setVisions((prev) => prev.filter((v) => v.id !== id));
   }
 
   function goBackToProblems() {
     router.push("/");
-  }
-
-  function goToLongDefinition(vision: Vision) {
-    const params = new URLSearchParams({
-      problemId,
-      problemName,
-      problemShort,
-      visionId: vision.id,
-      visionName: vision.name,
-      visionShort: vision.shortDef,
-    });
-    router.push(`/vision?${params.toString()}`);
   }
 
   return (
@@ -156,11 +137,12 @@ export default function VisionsClient({
 
       <h1>Visions du problème</h1>
 
-      {/* Rappel du problème parent */}
+      {/* Contexte du problème */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
         <h2>Problème sélectionné</h2>
         <p>
-          <strong>Nom :</strong> {problemName || "(problème inconnu)"}
+          <strong>Nom :</strong>{" "}
+          {problemName || "(problème inconnu – id non trouvé)"}
         </p>
         {problemShort && (
           <p>
@@ -227,21 +209,23 @@ export default function VisionsClient({
 
         <button
           onClick={handleCreateVision}
-          disabled={!newName.trim()}
+          disabled={!newName.trim() || !problemId}
           style={{
             padding: "8px 20px",
             borderRadius: 4,
             border: "none",
-            backgroundColor: newName.trim() ? "#2563eb" : "#9ca3af",
+            backgroundColor:
+              newName.trim() && problemId ? "#2563eb" : "#9ca3af",
             color: "white",
-            cursor: newName.trim() ? "pointer" : "not-allowed",
+            cursor:
+              newName.trim() && problemId ? "pointer" : "not-allowed",
           }}
         >
           Créer cette vision
         </button>
       </section>
 
-      {/* Liste des visions existantes */}
+      {/* Liste des visions */}
       <section>
         <h2>Visions existantes pour ce problème</h2>
 
@@ -273,7 +257,11 @@ export default function VisionsClient({
 
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <button
-                    onClick={() => goToLongDefinition(v)}
+                    onClick={() =>
+                      alert(
+                        "Plus tard : ici on ira vers la définition longue et les raffinements de cette vision."
+                      )
+                    }
                     style={{
                       padding: "6px 12px",
                       borderRadius: 4,
