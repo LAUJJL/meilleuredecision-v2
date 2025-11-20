@@ -1,3 +1,4 @@
+// app/visions/VisionsClient.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -9,34 +10,53 @@ type Vision = {
   shortDef: string;
 };
 
-function storageKey(problemName: string) {
-  return `md_visions_v1_${problemName}`;
+const VISIONS_STORAGE_PREFIX = "md_visions_v1_";
+
+/**
+ * Nettoie toutes les données (raffinements, snapshots, etc.)
+ * associées à une vision.
+ */
+function cleanupVisionLocalData(visionId: string) {
+  if (typeof window === "undefined") return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i);
+      if (!key) continue;
+      if (key.startsWith("md_") && key.includes(visionId)) {
+        keysToRemove.push(key);
+      }
+    }
+    keysToRemove.forEach((k) => window.localStorage.removeItem(k));
+  } catch (e) {
+    console.error("Erreur lors du nettoyage des données de la vision :", e);
+  }
 }
 
-export default function VisionsClient() {
+function storageKey(problemId: string) {
+  return `${VISIONS_STORAGE_PREFIX}${problemId}`;
+}
+
+export default function VisionsClient({
+  problemId,
+  problemName,
+  problemShort,
+}: {
+  problemId: string;
+  problemName: string;
+  problemShort: string;
+}) {
   const router = useRouter();
 
-  const [problemName, setProblemName] = useState("");
-  const [problemShort, setProblemShort] = useState("");
   const [visions, setVisions] = useState<Vision[]>([]);
   const [newName, setNewName] = useState("");
   const [newShort, setNewShort] = useState("");
 
-  // Lire le problème depuis l’URL et charger les visions
+  // Charger les visions pour ce problème
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const params = new URLSearchParams(window.location.search);
-    const pName = params.get("problemName") ?? "";
-    const pShort = params.get("problemShort") ?? "";
-
-    setProblemName(pName);
-    setProblemShort(pShort);
-
-    if (!pName) return;
-
+    if (!problemId || typeof window === "undefined") return;
     try {
-      const raw = window.localStorage.getItem(storageKey(pName));
+      const raw = window.localStorage.getItem(storageKey(problemId));
       if (!raw) return;
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
@@ -45,21 +65,35 @@ export default function VisionsClient() {
     } catch (e) {
       console.error("Erreur de lecture des visions :", e);
     }
-  }, []);
+  }, [problemId]);
 
-  // Sauvegarde des visions
+  // Sauvegarder dès que la liste change
   useEffect(() => {
-    if (!problemName || typeof window === "undefined") return;
+    if (!problemId || typeof window === "undefined") return;
     try {
-      window.localStorage.setItem(storageKey(problemName), JSON.stringify(visions));
+      window.localStorage.setItem(
+        storageKey(problemId),
+        JSON.stringify(visions)
+      );
     } catch (e) {
       console.error("Erreur d’enregistrement des visions :", e);
     }
-  }, [problemName, visions]);
+  }, [problemId, visions]);
 
   function handleCreateVision() {
     const trimmed = newName.trim();
     if (!trimmed) return;
+
+    // Unicité du nom de vision pour un même problème (insensible à la casse)
+    const alreadyExists = visions.some(
+      (v) => v.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (alreadyExists) {
+      alert(
+        "Une vision portant déjà ce nom existe pour ce problème. Merci de choisir un nom différent."
+      );
+      return;
+    }
 
     const newVision: Vision = {
       id: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -73,22 +107,35 @@ export default function VisionsClient() {
   }
 
   function handleDeleteVision(id: string) {
-    setVisions((prev) => prev.filter((v) => v.id !== id));
-  }
+    const vision = visions.find((v) => v.id === id);
+    const confirmDelete = window.confirm(
+      vision
+        ? `Supprimer la vision « ${vision.name} » et tous ses raffinements ?`
+        : "Supprimer cette vision et tous ses raffinements ?"
+    );
+    if (!confirmDelete) return;
 
-  function goToVisionDefinition(v: Vision) {
-    const params = new URLSearchParams({
-      problemName,
-      problemShort,
-      visionId: v.id,
-      visionName: v.name,
-      visionShort: v.shortDef,
-    });
-    router.push(`/vision?${params.toString()}`);
+    // Nettoyage des raffinements de cette vision
+    cleanupVisionLocalData(id);
+
+    // Suppression dans la liste
+    setVisions((prev) => prev.filter((v) => v.id !== id));
   }
 
   function goBackToProblems() {
     router.push("/");
+  }
+
+  function goToLongDefinition(vision: Vision) {
+    const params = new URLSearchParams({
+      problemId,
+      problemName,
+      problemShort,
+      visionId: vision.id,
+      visionName: vision.name,
+      visionShort: vision.shortDef,
+    });
+    router.push(`/vision?${params.toString()}`);
   }
 
   return (
@@ -109,6 +156,7 @@ export default function VisionsClient() {
 
       <h1>Visions du problème</h1>
 
+      {/* Rappel du problème parent */}
       <section style={{ marginTop: 16, marginBottom: 24 }}>
         <h2>Problème sélectionné</h2>
         <p>
@@ -121,6 +169,7 @@ export default function VisionsClient() {
         )}
       </section>
 
+      {/* Création d’une nouvelle vision */}
       <section
         style={{
           border: "1px solid #ddd",
@@ -192,6 +241,7 @@ export default function VisionsClient() {
         </button>
       </section>
 
+      {/* Liste des visions existantes */}
       <section>
         <h2>Visions existantes pour ce problème</h2>
 
@@ -223,7 +273,7 @@ export default function VisionsClient() {
 
                 <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <button
-                    onClick={() => goToVisionDefinition(v)}
+                    onClick={() => goToLongDefinition(v)}
                     style={{
                       padding: "6px 12px",
                       borderRadius: 4,
