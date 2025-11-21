@@ -1,313 +1,260 @@
-// app/visions/VisionsClient.tsx
 "use client";
 
-import { useEffect, useState, FormEvent } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Vision = {
   id: string;
   name: string;
-  shortDefinition: string;
-  createdAt: string;
+  shortDef: string;
 };
 
-type VisionsClientProps = {
-  problemId: string;
-  problemName: string;
-  problemShort: string;
-};
-
-const STORAGE_PREFIX = "md_visions_v2_";
-
-function loadVisions(problemId: string): Vision[] {
-  if (typeof window === "undefined") return [];
-  if (!problemId) return [];
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_PREFIX + problemId);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as Vision[];
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch {
-    return [];
-  }
+function storageKey(problemName: string) {
+  return `md_visions_v1_${problemName}`;
 }
 
-function saveVisions(problemId: string, visions: Vision[]) {
-  if (typeof window === "undefined") return;
-  if (!problemId) return;
+export default function VisionsClient() {
+  const router = useRouter();
 
-  try {
-    window.localStorage.setItem(
-      STORAGE_PREFIX + problemId,
-      JSON.stringify(visions)
-    );
-  } catch {
-    // on ignore les erreurs de stockage
-  }
-}
-
-export default function VisionsClient({
-  problemId,
-  problemName,
-  problemShort,
-}: VisionsClientProps) {
+  const [problemName, setProblemName] = useState("");
+  const [problemShort, setProblemShort] = useState("");
   const [visions, setVisions] = useState<Vision[]>([]);
-  const [visionName, setVisionName] = useState("");
-  const [visionShort, setVisionShort] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newShort, setNewShort] = useState("");
 
-  // charger les visions au montage / changement de problème
+  // Lire le problème depuis l’URL et charger les visions
   useEffect(() => {
-    const loaded = loadVisions(problemId);
-    setVisions(loaded);
-  }, [problemId]);
+    if (typeof window === "undefined") return;
 
-  const handleCreateVision = (e: FormEvent) => {
-    e.preventDefault();
-    const name = visionName.trim();
-    const shortDef = visionShort.trim();
+    const params = new URLSearchParams(window.location.search);
+    const pName = params.get("problemName") ?? "";
+    const pShort = params.get("problemShort") ?? "";
 
-    if (!name) {
-      alert("Veuillez saisir un nom de vision.");
-      return;
+    setProblemName(pName);
+    setProblemShort(pShort);
+
+    if (!pName) return;
+
+    try {
+      const raw = window.localStorage.getItem(storageKey(pName));
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        setVisions(parsed);
+      }
+    } catch (e) {
+      console.error("Erreur de lecture des visions :", e);
     }
+  }, []);
+
+  // Sauvegarde des visions
+  useEffect(() => {
+    if (!problemName || typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(storageKey(problemName), JSON.stringify(visions));
+    } catch (e) {
+      console.error("Erreur d’enregistrement des visions :", e);
+    }
+  }, [problemName, visions]);
+
+  function handleCreateVision() {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
 
     const newVision: Vision = {
-      id: Date.now().toString(),
-      name,
-      shortDefinition: shortDef,
-      createdAt: new Date().toISOString(),
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      name: trimmed,
+      shortDef: newShort.trim(),
     };
 
-    const next = [...visions, newVision];
-    setVisions(next);
-    saveVisions(problemId, next);
+    setVisions((prev) => [...prev, newVision]);
+    setNewName("");
+    setNewShort("");
+  }
 
-    setVisionName("");
-    setVisionShort("");
-  };
+  function handleDeleteVision(id: string) {
+    setVisions((prev) => prev.filter((v) => v.id !== id));
+  }
 
-  const handleDeleteVision = (id: string) => {
-    if (!window.confirm("Supprimer définitivement cette vision ?")) return;
-    const next = visions.filter((v) => v.id !== id);
-    setVisions(next);
-    saveVisions(problemId, next);
-  };
+  function goToVisionDefinition(v: Vision) {
+    const params = new URLSearchParams({
+      problemName,
+      problemShort,
+      visionId: v.id,
+      visionName: v.name,
+      visionShort: v.shortDef,
+    });
+    router.push(`/vision?${params.toString()}`);
+  }
 
-  const goBackToProblems = () => {
-    window.location.href = "/projects";
-  };
-
-  const problemLabel =
-    problemName && problemName.trim().length > 0
-      ? problemName
-      : "(problème sans nom)";
+  function goBackToProblems() {
+    router.push("/");
+  }
 
   return (
-    <div style={{ maxWidth: 900, margin: "2rem auto", padding: "0 1rem" }}>
+    <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
       <button
-        type="button"
         onClick={goBackToProblems}
         style={{
-          marginBottom: "1rem",
-          padding: "0.4rem 0.8rem",
+          marginBottom: 16,
+          padding: "6px 12px",
           borderRadius: 4,
-          border: "1px solid #ccc",
-          backgroundColor: "#f7f7f7",
+          border: "1px solid #9ca3af",
+          backgroundColor: "white",
           cursor: "pointer",
         }}
       >
         ← Revenir à la liste des problèmes
       </button>
 
-      <h1 style={{ fontSize: "1.6rem", marginBottom: "0.5rem" }}>
-        Visions du problème
-      </h1>
+      <h1>Visions du problème</h1>
 
-      <p style={{ marginBottom: "0.25rem" }}>
-        <strong>Nom :</strong> {problemLabel}
-      </p>
-      {problemShort && (
-        <p style={{ marginBottom: "1.5rem", color: "#555" }}>
-          <strong>Définition courte :</strong> {problemShort}
+      <section style={{ marginTop: 16, marginBottom: 24 }}>
+        <h2>Problème sélectionné</h2>
+        <p>
+          <strong>Nom :</strong> {problemName || "(problème inconnu)"}
         </p>
-      )}
+        {problemShort && (
+          <p>
+            <strong>Définition courte :</strong> {problemShort}
+          </p>
+        )}
+      </section>
 
-      {/* Création d'une nouvelle vision */}
       <section
         style={{
           border: "1px solid #ddd",
           borderRadius: 8,
-          padding: "1rem",
-          marginBottom: "2rem",
+          padding: 24,
+          marginBottom: 32,
         }}
       >
-        <h2 style={{ fontSize: "1.2rem", marginBottom: "0.75rem" }}>
-          Créer une nouvelle vision
-        </h2>
+        <h2>Créer une nouvelle vision</h2>
 
-        <form onSubmit={handleCreateVision}>
-          <div style={{ marginBottom: "0.75rem" }}>
-            <label
-              htmlFor="vision-name"
-              style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
-            >
-              Nom de la vision
-            </label>
-            <input
-              id="vision-name"
-              type="text"
-              value={visionName}
-              onChange={(e) => setVisionName(e.target.value)}
-              placeholder="Ex : rester salarié sans activité complémentaire"
-              style={{
-                width: "100%",
-                padding: "0.4rem 0.6rem",
-                borderRadius: 4,
-                border: "1px solid #ccc",
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: "0.75rem" }}>
-            <label
-              htmlFor="vision-short"
-              style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
-            >
-              Définition courte de la vision
-            </label>
-            <textarea
-              id="vision-short"
-              value={visionShort}
-              onChange={(e) => setVisionShort(e.target.value)}
-              placeholder="Quelques mots pour distinguer cette vision des autres."
-              rows={2}
-              style={{
-                width: "100%",
-                padding: "0.4rem 0.6rem",
-                borderRadius: 4,
-                border: "1px solid #ccc",
-                resize: "vertical",
-              }}
-            />
-          </div>
-
-          <button
-            type="submit"
-            style={{
-              padding: "0.45rem 0.9rem",
-              borderRadius: 4,
-              border: "none",
-              backgroundColor: "#2563eb",
-              color: "white",
-              fontWeight: 600,
-              cursor: "pointer",
-            }}
+        <div style={{ marginTop: 16, marginBottom: 12 }}>
+          <label
+            htmlFor="new-vision-name"
+            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
-            Créer cette vision
-          </button>
-        </form>
+            Nom de la vision
+          </label>
+          <input
+            id="new-vision-name"
+            type="text"
+            placeholder="Ex : Vision pessimiste de la trésorerie"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 4,
+              border: "1px solid #ccc",
+            }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label
+            htmlFor="new-vision-short"
+            style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+          >
+            Définition courte de la vision
+          </label>
+          <textarea
+            id="new-vision-short"
+            placeholder="Quelques mots pour distinguer cette vision des autres."
+            value={newShort}
+            onChange={(e) => setNewShort(e.target.value)}
+            rows={2}
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 4,
+              border: "1px solid #ccc",
+              resize: "vertical",
+            }}
+          />
+        </div>
+
+        <button
+          onClick={handleCreateVision}
+          disabled={!newName.trim()}
+          style={{
+            padding: "8px 20px",
+            borderRadius: 4,
+            border: "none",
+            backgroundColor: newName.trim() ? "#2563eb" : "#9ca3af",
+            color: "white",
+            cursor: newName.trim() ? "pointer" : "not-allowed",
+          }}
+        >
+          Créer cette vision
+        </button>
       </section>
 
-      {/* Liste des visions existantes */}
       <section>
-        <h2 style={{ fontSize: "1.2rem", marginBottom: "0.75rem" }}>
-          Visions existantes pour ce problème
-        </h2>
+        <h2>Visions existantes pour ce problème</h2>
 
         {visions.length === 0 ? (
-          <p style={{ color: "#666" }}>Aucune vision pour l’instant.</p>
+          <p style={{ marginTop: 12 }}>Aucune vision pour l’instant.</p>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-            {visions.map((vision) => {
-              const urlDefLongue = `/vision?problemName=${encodeURIComponent(
-                problemLabel
-              )}&problemShort=${encodeURIComponent(
-                problemShort || ""
-              )}&visionId=${encodeURIComponent(
-                vision.id
-              )}&visionName=${encodeURIComponent(vision.name)}`;
-
-              return (
-                <li
-                  key={vision.id}
-                  style={{
-                    border: "1px solid #e5e5e5",
-                    borderRadius: 8,
-                    padding: "0.75rem 1rem",
-                    marginBottom: "0.75rem",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "baseline",
-                      gap: "0.5rem",
-                    }}
-                  >
-                    <div>
-                      <strong>{vision.name}</strong>
-                      {vision.shortDefinition && (
-                        <div style={{ color: "#555", marginTop: 4 }}>
-                          {vision.shortDefinition}
-                        </div>
-                      )}
+          <ul style={{ listStyle: "none", padding: 0, marginTop: 16 }}>
+            {visions.map((v) => (
+              <li
+                key={v.id}
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 8,
+                  padding: 16,
+                  marginBottom: 12,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600 }}>{v.name}</div>
+                  {v.shortDef && (
+                    <div style={{ color: "#4b5563", fontSize: 14 }}>
+                      {v.shortDef}
                     </div>
+                  )}
+                </div>
 
-                    <small style={{ color: "#888" }}>
-                      Créée le{" "}
-                      {new Date(vision.createdAt).toLocaleString("fr-FR", {
-                        dateStyle: "short",
-                        timeStyle: "short",
-                      })}
-                    </small>
-                  </div>
-
-                  <div
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <button
+                    onClick={() => goToVisionDefinition(v)}
                     style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: "0.5rem",
-                      marginTop: "0.75rem",
+                      padding: "6px 12px",
+                      borderRadius: 4,
+                      border: "1px solid #2563eb",
+                      backgroundColor: "white",
+                      color: "#2563eb",
+                      cursor: "pointer",
                     }}
                   >
-                    <a
-                      href={urlDefLongue}
-                      style={{
-                        padding: "0.3rem 0.7rem",
-                        borderRadius: 4,
-                        border: "1px solid #2563eb",
-                        color: "#2563eb",
-                        textDecoration: "none",
-                        fontSize: "0.9rem",
-                      }}
-                    >
-                      Voir ou créer la définition longue
-                    </a>
+                    Voir la définition longue
+                  </button>
 
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteVision(vision.id)}
-                      style={{
-                        padding: "0.3rem 0.7rem",
-                        borderRadius: 4,
-                        border: "1px solid #dc2626",
-                        backgroundColor: "white",
-                        color: "#dc2626",
-                        fontSize: "0.9rem",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Supprimer cette vision
-                    </button>
-                  </div>
-                </li>
-              );
-            })}
+                  <button
+                    onClick={() => handleDeleteVision(v.id)}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 4,
+                      border: "none",
+                      backgroundColor: "#ef4444",
+                      color: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Supprimer cette vision
+                  </button>
+                </div>
+              </li>
+            ))}
           </ul>
         )}
       </section>
-    </div>
+    </main>
   );
 }
