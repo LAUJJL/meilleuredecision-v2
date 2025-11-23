@@ -1,245 +1,108 @@
 // app/projects/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-
-type StoredProblem = {
-  id: string;
-  name: string;
-  short?: string;
-};
-
-const STORAGE_KEY = "md_problems_v1";
-
-function loadProblems(): StoredProblem[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
-function saveProblems(problems: StoredProblem[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(problems));
-  } catch {
-    // ignore
-  }
-}
-
-function makeId() {
-  return Math.random().toString(36).slice(2, 12);
-}
+import { useMemo, useState } from "react";
+import {
+  getState,
+  createProject,
+  selectProject,
+  clearSelection,
+  deleteProject,
+  selectSequence,
+} from "@/lib/rps_v3";
 
 export default function ProjectsPage() {
-  const router = useRouter();
-  const [problems, setProblems] = useState<StoredProblem[]>([]);
-  const [name, setName] = useState("");
-  const [short, setShort] = useState("");
+  const s = getState();
+  const [title, setTitle] = useState("");
+  const [tag, setTag] = useState("");
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    setProblems(loadProblems());
-  }, []);
+  const projects = useMemo(() => s.projects, [s.projects]);
 
-  function handleCreateProblem() {
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      alert("Merci de saisir un nom de problème.");
-      return;
-    }
+  const create = () => {
+    const name = title.trim();
+    if (!name) return;
+    createProject(name, tag.trim());
+    setTitle("");
+    setTag("");
+    // Après création, on va au choix/creation de vision
+    window.location.href = "/refinements";
+  };
 
-    // empêcher les doublons de nom
-    const already = problems.find(
-      (p) => p.name.toLowerCase() === trimmedName.toLowerCase()
-    );
-    if (already) {
-      alert(
-        "Il existe déjà un problème avec ce nom. Modifiez le nom ou ouvrez le problème existant."
-      );
-      return;
-    }
+  const open = (projectId: string) => {
+    selectProject(projectId);
+    window.location.href = "/refinements";
+  };
 
-    const newProblem: StoredProblem = {
-      id: makeId(),
-      name: trimmedName,
-      short: short.trim() || undefined,
-    };
+  const purge = (projectId: string) => {
+    if (!confirm("Supprimer ce problème et toutes ses visions/phases ?")) return;
+    deleteProject(projectId);
+    // recharger la page
+    window.location.reload();
+  };
 
-    const updated = [...problems, newProblem];
-    setProblems(updated);
-    saveProblems(updated);
-
-    // aller directement à la page des visions de ce problème
-    const params = new URLSearchParams({
-      problemId: newProblem.id,
-      problemName: newProblem.name,
-      problemShort: newProblem.short || "",
-    });
-    router.push(`/visions?${params.toString()}`);
-  }
-
-  function handleOpenProblem(p: StoredProblem) {
-    const params = new URLSearchParams({
-      problemId: p.id,
-      problemName: p.name,
-      problemShort: p.short || "",
-    });
-    router.push(`/visions?${params.toString()}`);
-  }
-
-  function handleDeleteProblem(p: StoredProblem) {
-    if (
-      !confirm(
-        `Supprimer le problème « ${p.name} » et toutes ses visions / raffinements ?`
-      )
-    ) {
-      return;
-    }
-
-    const remaining = problems.filter((x) => x.id !== p.id);
-    setProblems(remaining);
-    saveProblems(remaining);
-
-    // on laissera les anciennes clés locales périmées,
-    // mais elles ne seront plus réutilisées car l'id a disparu.
-  }
-
-  function handleResetSelection() {
-    setName("");
-    setShort("");
-  }
+  const resetSel = () => {
+    clearSelection();
+    window.location.href = "/projects";
+  };
 
   return (
-    <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
-      <h1>Problèmes (gestion)</h1>
+    <main className="min-h-screen grid place-items-center p-6">
+      <div className="w-full max-w-4xl space-y-6">
+        <h1 className="text-2xl font-semibold text-center">
+          Problèmes <span className="text-xs opacity-60">(gestion)</span>
+        </h1>
 
-      {/* Liste des problèmes existants */}
-      <section style={{ marginTop: 24, marginBottom: 32 }}>
-        <h2>Ouvrir un problème existant</h2>
-        {problems.length === 0 ? (
-          <p style={{ marginTop: 8 }}>Aucun problème enregistré pour l’instant.</p>
-        ) : (
-          <ul style={{ marginTop: 12, listStyle: "none", padding: 0 }}>
-            {problems.map((p) => (
-              <li
-                key={p.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "8px 0",
-                  borderBottom: "1px solid #e5e7eb",
-                }}
-              >
-                <div>
-                  <strong>{p.name}</strong>
-                  {p.short && <span> — {p.short}</span>}
+        {/* Liste des problèmes */}
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium">Ouvrir un problème existant</h2>
+          <ul className="space-y-1">
+            {projects.length === 0 && <li className="opacity-60">Aucun problème pour l’instant.</li>}
+            {projects.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-3">
+                <div className="truncate">
+                  <span className="font-medium">{p.title}</span>
+                  {p.tag ? <span className="opacity-60"> — {p.tag}</span> : null}
                 </div>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <button
-                    onClick={() => handleOpenProblem(p)}
-                    style={{
-                      padding: "4px 12px",
-                      borderRadius: 4,
-                      border: "1px solid #4b5563",
-                      backgroundColor: "white",
-                      cursor: "pointer",
-                    }}
-                  >
+                <div className="flex gap-3">
+                  <button className="underline" onClick={() => open(p.id)}>
                     Ouvrir
                   </button>
-                  <button
-                    onClick={() => handleDeleteProblem(p)}
-                    style={{
-                      padding: "4px 12px",
-                      borderRadius: 4,
-                      border: "1px solid #b91c1c",
-                      backgroundColor: "#fee2e2",
-                      color: "#b91c1c",
-                      cursor: "pointer",
-                    }}
-                  >
+                  <button className="text-red-600 underline" onClick={() => purge(p.id)}>
                     Supprimer
                   </button>
                 </div>
               </li>
             ))}
           </ul>
-        )}
-      </section>
+        </section>
 
-      {/* Création d’un nouveau problème */}
-      <section style={{ marginBottom: 32 }}>
-        <h2>Créer un nouveau problème</h2>
-
-        <div style={{ marginTop: 12 }}>
+        {/* Nouveau problème */}
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">Créer un nouveau problème</h2>
           <input
-            type="text"
+            className="w-full border rounded-lg p-2"
             placeholder="Nom du problème (80 car. max)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
             maxLength={80}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: 8,
-              borderRadius: 4,
-              border: "1px solid #d1d5db",
-              marginBottom: 8,
-            }}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
           />
           <input
-            type="text"
+            className="w-full border rounded-lg p-2"
             placeholder="Définition courte (1 ligne, optionnel)"
-            value={short}
-            onChange={(e) => setShort(e.target.value)}
-            maxLength={160}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: 8,
-              borderRadius: 4,
-              border: "1px solid #d1d5db",
-              marginBottom: 12,
-            }}
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
           />
-          <button
-            onClick={handleCreateProblem}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 4,
-              border: "none",
-              backgroundColor: "#2563eb",
-              color: "white",
-              cursor: "pointer",
-              fontWeight: 600,
-              marginRight: 8,
-            }}
-          >
+          <button className="w-full border rounded-lg p-2" onClick={create}>
             Créer le problème (puis choisir/créer sa vision)
           </button>
-          <button
-            onClick={handleResetSelection}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 4,
-              border: "1px solid #9ca3af",
-              backgroundColor: "white",
-              cursor: "pointer",
-            }}
-          >
+        </section>
+
+        <div>
+          <button className="border rounded-lg px-3 py-2" onClick={resetSel}>
             Réinitialiser la sélection
           </button>
         </div>
-      </section>
+      </div>
     </main>
   );
 }
