@@ -6,34 +6,31 @@ import { useRouter } from "next/navigation";
 type Problem = {
   id: string;
   name: string;
-  short: string;
+  shortDef: string;
 };
 
-const STORAGE_KEYS = ["md_problems_v1", "md_problems"];
+const PROBLEMS_STORAGE_KEY = "md_problems_v1";
 
 function loadProblems(): Problem[] {
   if (typeof window === "undefined") return [];
-  for (const key of STORAGE_KEYS) {
-    const raw = window.localStorage.getItem(key);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          return parsed as Problem[];
-        }
-      } catch {
-        // on ignore et on essaye la clé suivante
-      }
-    }
+  try {
+    const raw = window.localStorage.getItem(PROBLEMS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed;
+  } catch (e) {
+    console.error("Erreur de lecture des problèmes :", e);
+    return [];
   }
-  return [];
 }
 
-function saveProblems(problems: Problem[]) {
+function saveProblems(list: Problem[]) {
   if (typeof window === "undefined") return;
-  const raw = JSON.stringify(problems);
-  for (const key of STORAGE_KEYS) {
-    window.localStorage.setItem(key, raw);
+  try {
+    window.localStorage.setItem(PROBLEMS_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.error("Erreur d’enregistrement des problèmes :", e);
   }
 }
 
@@ -41,148 +38,122 @@ export default function ProblemsPage() {
   const router = useRouter();
 
   const [problems, setProblems] = useState<Problem[]>([]);
-  const [nameInput, setNameInput] = useState("");
-  const [shortInput, setShortInput] = useState("");
+  const [name, setName] = useState("");
+  const [shortDef, setShortDef] = useState("");
 
-  // Charger la liste au montage
+  // Charger les problèmes au montage
   useEffect(() => {
     const initial = loadProblems();
     setProblems(initial);
   }, []);
 
-  function createProblem() {
-    const trimmedName = nameInput.trim();
-    const trimmedShort = shortInput.trim();
+  // Sauvegarder à chaque modification
+  useEffect(() => {
+    saveProblems(problems);
+  }, [problems]);
 
-    if (!trimmedName) {
-      alert("Merci de donner un nom au problème.");
-      return;
-    }
+  function handleCreateProblem() {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
 
     const newProblem: Problem = {
-      id: "pb_" + Date.now().toString(36),
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2),
       name: trimmedName,
-      short: trimmedShort,
+      shortDef: shortDef.trim(),
     };
 
-    const updated = [...problems, newProblem];
-    setProblems(updated);
-    saveProblems(updated);
-
-    setNameInput("");
-    setShortInput("");
+    setProblems((prev) => [...prev, newProblem]);
+    setName("");
+    setShortDef("");
   }
 
-  function openVisions(problem: Problem) {
+  function handleDeleteProblem(id: string) {
+    setProblems((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  function goToVisions(problem: Problem) {
     const params = new URLSearchParams({
-      problemId: problem.id,
       problemName: problem.name,
-      problemShort: problem.short ?? "",
+      problemShort: problem.shortDef,
     });
-
     router.push(`/visions?${params.toString()}`);
-  }
-
-  function deleteProblem(problem: Problem) {
-    if (
-      !confirm(
-        `Supprimer le problème « ${problem.name} » et toutes ses visions ?`
-      )
-    ) {
-      return;
-    }
-
-    const updated = problems.filter((p) => p.id !== problem.id);
-    setProblems(updated);
-    saveProblems(updated);
-
-    if (typeof window !== "undefined") {
-      // au minimum on efface les visions associées à ce problème
-      const prefix = `md_visions_${problem.id}_`;
-      for (const key of Object.keys(window.localStorage)) {
-        if (key.startsWith(prefix)) {
-          window.localStorage.removeItem(key);
-        }
-      }
-    }
   }
 
   return (
     <main style={{ maxWidth: 900, margin: "32px auto", padding: "0 16px" }}>
       <h1>Problèmes (liste)</h1>
-
-      <p style={{ marginTop: 8, color: "#4b5563" }}>
+      <p style={{ marginBottom: 24 }}>
         Cette page remplace l’ancien « Accueil » : ici, vous créez et gérez vos
         problèmes. Chaque problème pourra ensuite avoir plusieurs visions, puis
         des raffinements par phases.
       </p>
 
-      {/* Création d'un nouveau problème */}
+      {/* Création d’un nouveau problème */}
       <section
         style={{
-          marginTop: 24,
-          padding: 16,
+          border: "1px solid #ddd",
           borderRadius: 8,
-          border: "1px solid #e5e7eb",
+          padding: 24,
+          marginBottom: 32,
         }}
       >
         <h2>Créer un nouveau problème</h2>
 
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginTop: 16, marginBottom: 12 }}>
           <label
-            htmlFor="problem-name"
+            htmlFor="new-problem-name"
             style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
             Nom du problème
           </label>
           <input
-            id="problem-name"
+            id="new-problem-name"
             type="text"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
             placeholder="Ex : Trésorerie d’une petite entreprise"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             style={{
               width: "100%",
               padding: 8,
               borderRadius: 4,
-              border: "1px solid #d1d5db",
+              border: "1px solid #ccc",
             }}
           />
         </div>
 
-        <div style={{ marginTop: 12 }}>
+        <div style={{ marginBottom: 16 }}>
           <label
-            htmlFor="problem-short"
+            htmlFor="new-problem-short"
             style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
           >
             Définition courte (facultative)
           </label>
-          <input
-            id="problem-short"
-            type="text"
-            value={shortInput}
-            onChange={(e) => setShortInput(e.target.value)}
+          <textarea
+            id="new-problem-short"
             placeholder="Quelques mots pour distinguer ce problème des autres."
+            value={shortDef}
+            onChange={(e) => setShortDef(e.target.value)}
+            rows={2}
             style={{
               width: "100%",
               padding: 8,
               borderRadius: 4,
-              border: "1px solid #d1d5db",
+              border: "1px solid #ccc",
+              resize: "vertical",
             }}
           />
         </div>
 
         <button
-          onClick={createProblem}
+          onClick={handleCreateProblem}
+          disabled={!name.trim()}
           style={{
-            marginTop: 16,
-            padding: "8px 16px",
-            borderRadius: 6,
+            padding: "8px 20px",
+            borderRadius: 4,
             border: "none",
-            backgroundColor: "#2563eb",
+            backgroundColor: name.trim() ? "#2563eb" : "#9ca3af",
             color: "white",
-            fontWeight: 600,
-            cursor: "pointer",
+            cursor: name.trim() ? "pointer" : "not-allowed",
           }}
         >
           Créer ce problème
@@ -190,64 +161,64 @@ export default function ProblemsPage() {
       </section>
 
       {/* Liste des problèmes existants */}
-      <section style={{ marginTop: 32 }}>
+      <section>
         <h2>Problèmes existants</h2>
 
         {problems.length === 0 ? (
-          <p style={{ marginTop: 8, color: "#6b7280" }}>
+          <p style={{ marginTop: 12 }}>
             Aucun problème pour l’instant. Créez-en un ci-dessus.
           </p>
         ) : (
-          <ul style={{ listStyle: "none", padding: 0, marginTop: 12 }}>
-            {problems.map((pb) => (
+          <ul style={{ listStyle: "none", padding: 0, marginTop: 16 }}>
+            {problems.map((p) => (
               <li
-                key={pb.id}
+                key={p.id}
                 style={{
                   border: "1px solid #e5e7eb",
                   borderRadius: 8,
-                  padding: 12,
-                  marginBottom: 8,
+                  padding: 16,
+                  marginBottom: 12,
                   display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
+                  flexDirection: "column",
+                  gap: 8,
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600 }}>{pb.name}</div>
-                  {pb.short && (
-                    <div style={{ fontSize: 14, color: "#6b7280" }}>
-                      {pb.short}
+                  <div style={{ fontWeight: 600 }}>{p.name}</div>
+                  {p.shortDef && (
+                    <div style={{ color: "#4b5563", fontSize: 14 }}>
+                      {p.shortDef}
                     </div>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+
+                <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                   <button
-                    onClick={() => openVisions(pb)}
+                    onClick={() => goToVisions(p)}
                     style={{
                       padding: "6px 12px",
-                      borderRadius: 6,
+                      borderRadius: 4,
                       border: "1px solid #2563eb",
                       backgroundColor: "white",
                       color: "#2563eb",
                       cursor: "pointer",
-                      fontSize: 14,
                     }}
                   >
                     Voir, créer ou effacer les visions de ce problème
                   </button>
+
                   <button
-                    onClick={() => deleteProblem(pb)}
+                    onClick={() => handleDeleteProblem(p.id)}
                     style={{
                       padding: "6px 12px",
-                      borderRadius: 6,
-                      border: "1px solid #dc2626",
-                      backgroundColor: "white",
-                      color: "#dc2626",
+                      borderRadius: 4,
+                      border: "none",
+                      backgroundColor: "#ef4444",
+                      color: "white",
                       cursor: "pointer",
-                      fontSize: 14,
                     }}
                   >
-                    Supprimer
+                    Supprimer ce problème
                   </button>
                 </div>
               </li>
