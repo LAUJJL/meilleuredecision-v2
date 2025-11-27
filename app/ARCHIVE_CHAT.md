@@ -1,80 +1,95 @@
-
-Il s’agit de **la mémoire condensée du projet**, pour garantir qu’on ne perde jamais la logique même si la conversation disparaît.
-
----
-
-## 👉 **CONTENU DU FICHIER `ARCHIVE_CHAT.md`**
-
-```markdown
 # Archive du Projet – Synthèse Permanente
 
-Ce fichier résume l’état stable du projet afin qu’il puisse être récupéré
-même si la conversation avec ChatGPT est perdue.
+Ce fichier résume l’état stable du projet et permet de le reconstruire
+même si la conversation ChatGPT est perdue.
 
 ---
 
-# 1. Objectif du Projet
+## 1. Objectif du projet
 
-Créer un site capable de guider un visiteur dans la construction d’un modèle
-logique et quantitatif via une succession de raffinements successifs, tout en
-assurant que chaque étape soit comprise, reformulée et validée.
-
----
-
-# 2. Composants essentiels
-
-- Gestion des problèmes
-- Gestion des visions
-- Raffinements successifs
-- Boucle de reformulation
-- Système de validation explicite par l’utilisateur
-- Modèle interne structuré selon le Langage Pivot
+Construire un site où un visiteur développe progressivement un modèle logique
+via des raffinements successifs, validés étape par étape.
 
 ---
 
-# 3. Rôle de la Boucle de Raffinement Validé
+## 2. Composants actuels
 
-1. Le visiteur propose un texte.
-2. Le système propose deux reformulations.
-3. Le visiteur valide si elles expriment bien son idée.
-4. Une étape est générée.
-5. Le visiteur valide ou rejette l’étape.
-6. Seules les étapes validées alimentent le modèle interne.
-
----
-
-# 4. Modèle interne
-
-Le modèle interne stocke :
-- la liste des raffinements validés,
-- les éléments pivot (TEMP, CONST, PARAM, AUX, AUX_STABLE),
-- les textes cumulés,
-- les contributions (structure future).
+- Saisie de texte de raffinement
+- Reformulations automatiques
+- Validation par le visiteur
+- Étapes acceptées ou rejetées
+- Modèle interne structuré par :
+  - TEMP
+  - CONST
+  - PARAM
+  - AUX
+  - AUX_STABLE
+- Contributions textuelles
+- Bornes (logiques + utilisateur) prévues dans la structure
 
 ---
 
-# 5. Priorités de conception
+## 3. Boucle de Raffinement Validé
 
-- Simplicité avant complexité
-- Pas d’usine à gaz
-- IA non obligatoire au début
-- Toujours partir de la structure la plus simple
-- Sécuriser conceptuellement le système avant d’ajouter l’intelligence
-
----
-
-# 6. Risques identifiés et gestion
-
-- Perte de conversation → gérée via ce fichier + LANGAGE_PIVOT.md
-- Perte de machine → gérée via double ordinateur + GitHub
-- Synchronisation → GitHub Desktop
-- Sécurité logicielle → Git comme coffre-fort central
+1. Texte du visiteur  
+2. Deux reformulations  
+3. Validation des reformulations  
+4. Création d’une étape  
+5. Validation ou rejet  
+6. Mise à jour du modèle interne
 
 ---
 
-# 7. Continuité de projet
+## 4. Structure du modèle interne
 
-Si le matériel est perdu :
-1. Cloner le dépôt GitHub
-2. Lire ARCHIVE_CHAT.md et LANGAGE_PIVOT.md
-3. Reprendre immédiatement la construction du projet
+Chaque étape validée inclut :
+- texte d’origine,
+- texte normalisé,
+- type d’éléments Pivot,
+- contributions,
+- (plus tard) bornes.
+
+---
+
+## 5. Priorités de conception
+
+- simplicité,
+- transparence,
+- contrôle par le visiteur,
+- éviter l’usine à gaz,
+- IA utilisée dans un cadre structuré,
+- chacun doit comprendre ce qu’il valide.
+
+---
+
+## 6. Bornes de variation
+
+Les éléments non fixes peuvent avoir :
+
+### Bornes logiques (internes)
+- définies automatiquement selon le type (ex : probabilité → [0 ; 1])
+
+### Bornes utilisateur (optionnelles)
+- fournies par le visiteur pour refléter sa réalité.
+
+---
+
+## 7. Redémarrage complet du projet (si tout est perdu)
+
+1. Installer Node, Git, VS Code, GitHub Desktop.  
+2. `git clone` du dépôt GitHub.  
+3. Lire `LANGAGE_PIVOT.md` et `ARCHIVE_CHAT.md`.  
+4. `npm install`  
+5. `npm run dev`  
+6. Reprendre les raffinements.
+
+---
+
+## 8. Position actuelle
+
+- Moteur simple opérationnel  
+- Langage Pivot formalisé  
+- Bornes intégrées dans la structure  
+- Sauvegarde Git opérationnelle  
+- Sécurité du projet garantie  
+- Prochaine étape : enrichir le moteur si besoin

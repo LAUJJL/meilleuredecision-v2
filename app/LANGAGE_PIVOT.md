@@ -1,74 +1,106 @@
 # Langage Pivot – Définition Officielle
 
 Le Langage Pivot est le langage interne utilisé par le système pour traduire
-les raffinements du visiteur en un modèle cohérent, mathémique et calculable.
-
-Il est composé d’éléments de différents types, chacun jouant un rôle distinct
-dans la construction du modèle.
+les raffinements du visiteur en un modèle cohérent, mathématique et calculable.
 
 ---
 
-# 1. Types d’éléments
+## 1. Types d’éléments
 
-## 1.1 TEMP — Constantes provisoires / précaires
+### 1.1 TEMP — Constantes provisoires / précaires
 - Valeurs temporaires introduites par le visiteur.
 - Peuvent varier dans les limites définies.
-- Peuvent être transformées plus tard en :
-  - CONST,
-  - PARAM,
-  - AUX,
-  - ou équations complètes.
+- Peuvent devenir PARAM, CONST, AUX, ou une équation.
 
-## 1.2 CONST — Constantes fixes
-- Valeurs considérées comme immuables dans le modèle.
-- Déterminées par le visiteur.
-- Ne changent plus durant les raffinements suivants.
+### 1.2 CONST — Constantes fixes
+- Valeur immuable dans le modèle.
+- Ne nécessite pas de bornes.
 
-## 1.3 PARAM — Paramètres
-- Informations nécessaires au modèle mais non déterminées.
-- Doivent être spécifiées plus tard ou évaluées au moment du calcul.
-- Rôle intermédiaire entre TEMP et CONST.
+### 1.3 PARAM — Paramètres
+- Nécessaires au modèle mais non définis.
+- Peuvent avoir des bornes (logiques ou utilisateur).
 
-## 1.4 AUX — Variables auxiliaires
-- Variables introduites pour aider à formuler des relations intermédiaires.
-- Leur équation peut changer lors des raffinements suivants.
-- Elles peuvent même disparaître si le visiteur ne les stabilise pas.
+### 1.4 AUX — Variables auxiliaires
+- Variables intermédiaires.
+- Leur équation peut changer.
+- Peuvent avoir des bornes.
 
-## 1.5 AUX_STABLE — Variables auxiliaires stabilisées
-- Le visiteur décide explicitement :
-  - que la variable ne sera plus modifiée,
-  - que son équation ne changera plus.
-- Sert à figer une partie de la structure interne.
+### 1.5 AUX_STABLE — Variables auxiliaires stabilisées
+- Le visiteur impose que l’équation ne change plus.
+- Peuvent avoir des bornes.
 
 ---
 
-# 2. Boucle de Raffinement Validé
-
-Chaque cycle de raffinement suit les étapes suivantes :
+## 2. Boucle de Raffinement Validé
 
 1. Le visiteur propose un texte.
-2. Le système génère **deux reformulations** en langage naturel.
-3. Le visiteur juge si ces deux reformulations expriment la même idée que lui.
-4. S’il valide :
-   - Le système choisit une reformulation comme base du modèle interne.
-   - Une étape est créée.
+2. Le système génère deux reformulations.
+3. Le visiteur valide si elles expriment bien la même idée.
+4. Le système crée une étape.
 5. Le visiteur valide ou rejette l’étape.
-6. Seules les étapes validées alimentent le modèle interne.
+6. Seules les étapes validées construisent le modèle.
 
 ---
 
-# 3. Contributions (structure prévue)
+## 3. Contributions
 
-Chaque étape de raffinement peut contenir :
-- des définitions,
-- des contraintes,
-- des relations,
-- des mécanismes,
-- des buts,
-- des clarifications, etc.
+Chaque étape peut contenir plusieurs contributions textuelles :
 
-Le système accepte que **plusieurs contributions** apparaissent dans une même étape.
-
-Une structure est prévue :
 ```ts
 contributions: string[];
+```
+
+---
+
+## 4. Bornes associées aux éléments non fixes
+
+Deux types possibles :
+
+### 4.1 Bornes logiques (internes au système)
+
+- probabilité : [0 ; 1]
+- pourcentage : [0 ; 100]
+- temps : ≥ 0
+- stock physique : ≥ 0
+
+Ces bornes peuvent être déduites automatiquement.
+
+### 4.2 Bornes utilisateur (optionnelles)
+
+Valeurs réalistes selon la situation du visiteur.
+
+Exemples :
+- revenu mensuel : [2000 ; 4000]
+- fatigue sur 10 : [0 ; 10]
+
+---
+
+## 5. Structure technique pour les bornes
+
+```ts
+interface Bounds {
+  logical?: {
+    min?: number;
+    max?: number;
+  };
+  user?: {
+    min?: number;
+    max?: number;
+  };
+}
+```
+
+Les éléments Pivot peuvent avoir :
+
+```ts
+bounds?: Bounds;
+```
+
+---
+
+## 6. Rôle du Langage Pivot
+
+- structurer la pensée du visiteur,
+- organiser les raffinements successifs,
+- fournir un modèle stable pour le moteur de calcul,
+- assurer que l’IA reste cohérente avec l’intention du visiteur.

@@ -1,74 +1,56 @@
 // lib/pivot.ts
+// Structures du Langage Pivot (version simple et extensible)
 
-export type Primitive =
-  | 'COMPARER'
-  | 'NORMALISER'
-  | 'TRANSFORMER'
-  | 'PONDERER'
-  | 'SOMMER'
-  | 'DECOMPOSER'
-  | 'EVALUER';
+export type PivotKind = 'TEMP' | 'CONST' | 'PARAM' | 'AUX' | 'AUX_STABLE';
 
-export interface BasePivotElement {
-  kind: 'CONST' | 'PARAM' | 'TEMP' | 'AUX' | 'AUX_STABLE';
-  name: string;
+export interface Bounds {
+  logical?: {
+    min?: number;
+    max?: number;
+  };
+  user?: {
+    min?: number;
+    max?: number;
+  };
+}
+
+export interface PivotElement {
+  id: string;         // identifiant interne unique
+  name: string;       // nom de la variable
+  kind: PivotKind;    // TEMP, CONST, PARAM, AUX, AUX_STABLE
   description?: string;
+  bounds?: Bounds;    // bornes logiques + utilisateur (optionnel)
 }
 
-export interface ConstanteFixe extends BasePivotElement {
-  kind: 'CONST';
-  value: unknown;
+export interface PivotStep {
+  stepIndex: number;        // numéro d’étape
+  sourceText: string;       // texte d’origine
+  normalizedText: string;   // texte reformulé accepté
+  elements: PivotElement[]; // éléments pivot associés
+  contributions: string[];  // liste de contributions textuelles
 }
 
-export interface Parametre extends BasePivotElement {
-  kind: 'PARAM';
-  value: unknown;
+export interface PivotModel {
+  steps: PivotStep[];
 }
 
-export interface ConstanteProvisoire extends BasePivotElement {
-  kind: 'TEMP';
-  value: unknown;
-  bounds?: [number, number];
-}
+// Outil simple pour regrouper les éléments par type (utile dans la synthèse)
+export function groupElementsByKind(
+  model: PivotModel
+): Record<PivotKind, PivotElement[]> {
+  const result: Record<PivotKind, PivotElement[]> = {
+    TEMP: [],
+    CONST: [],
+    PARAM: [],
+    AUX: [],
+    AUX_STABLE: [],
+  };
 
-export interface Auxiliaire extends BasePivotElement {
-  kind: 'AUX';
-  equation: string;
-  dependencies: string[];
-}
-
-export interface AuxiliaireStabilisee extends BasePivotElement {
-  kind: 'AUX_STABLE';
-  equation: string;
-  dependencies: string[];
-}
-
-export type ElementPivot =
-  | ConstanteFixe
-  | Parametre
-  | ConstanteProvisoire
-  | Auxiliaire
-  | AuxiliaireStabilisee;
-
-export function createConstant(
-  name: string,
-  value: unknown,
-  options?: { kind?: 'CONST' | 'PARAM' | 'TEMP'; bounds?: [number, number] }
-): ElementPivot {
-  const kind = options?.kind ?? 'TEMP'; // par défaut : provisoire
-  if (kind === 'CONST') return { kind: 'CONST', name, value };
-  if (kind === 'PARAM') return { kind: 'PARAM', name, value };
-  return { kind: 'TEMP', name, value, bounds: options?.bounds };
-}
-
-export function createAuxiliary(
-  name: string,
-  equation: string,
-  dependencies: string[],
-  options?: { stable?: boolean }
-): ElementPivot {
-  if (options?.stable) {
-    return { kind: 'AUX_STABLE', name, equation, dependencies };
+  for (const step of model.steps) {
+    for (const el of step.elements) {
+      result[el.kind].push(el);
+    }
   }
-  return { kind: 'AUX', name, equation, dependencies };
+
+  return result;
 }
