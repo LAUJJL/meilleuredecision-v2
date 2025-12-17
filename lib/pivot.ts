@@ -1,4 +1,4 @@
-// lib/pivot.ts
+// lib/pivot.ts pas utilisé dans V1
 // Structures du Langage Pivot (version simple et extensible)
 
 export type PivotKind = 'TEMP' | 'CONST' | 'PARAM' | 'AUX' | 'AUX_STABLE';
