@@ -1,5 +1,7 @@
 'use client';
 
+import HelpPanel from "../components/HelpPanel";
+
 export default function ProblemePage() {
   return (
     <main
@@ -18,6 +20,22 @@ export default function ProblemePage() {
       </div>
 
       <h1>Définition du problème</h1>
+<HelpPanel title="Aide — comment utiliser cette page">
+  <p style={{ marginTop: 0 }}>
+    Cette page présente le problème sous deux formes :
+    une définition courte (repère rapide) et une définition longue (contexte complet).
+  </p>
+
+  <p>
+    L’idée est simple : avant d’explorer des manières de traiter la situation,
+    on s’assure que le problème est posé clairement (horizon, objectif, contexte).
+  </p>
+
+  <p style={{ marginBottom: 0 }}>
+    Vous pouvez cliquer sur <b>Continuer</b> : l’étape suivante consiste à choisir une manière de traiter
+    le problème (les “visions”) puis à l’analyser progressivement.
+  </p>
+</HelpPanel>
 
       <section
         style={{

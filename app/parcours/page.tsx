@@ -1,4 +1,5 @@
 'use client';
+import HelpPanel from "../components/HelpPanel";
 
 import React, { useEffect, useMemo, useState } from 'react';
 
@@ -332,6 +333,107 @@ export default function ParcoursPage() {
   const [snap, setSnap] = useState<SnapshotV1>(() => defaultSnapshotPreset());
   const [addFromPeriodDraft, setAddFromPeriodDraft] = useState<string>('1');
 
+function helpTitle() {
+  const s = step === 0 ? "Vision" : step === 1 ? "R1" : step === 2 ? "R2" : "R3";
+  return `Aide — ${snap.visionLabel} — ${s}`;
+}
+
+function helpContent() {
+  // step 0 : définition de la vision
+  if (step === 0) {
+    return (
+      <>
+        <p style={{ marginTop: 0 }}>
+          Cette page décrit la <b>vision</b> en langage courant (définition courte et longue).
+        </p>
+        <p style={{ marginBottom: 0 }}>
+          Cliquez sur <b>Continuer</b> pour passer au premier raffinement (R1).
+        </p>
+      </>
+    );
+  }
+
+  // step 1 : R1 (conceptuel, sans objectif)
+  if (step === 1) {
+    return (
+      <>
+        <p style={{ marginTop: 0 }}>
+          <b>R1</b> est le point de départ commun : un stock (ici la trésorerie) évolue sous l’effet
+          d’<b>encaissements</b> et de <b>décaissements</b> supposés constants sur l’horizon.
+        </p>
+        <p>
+          Vous pouvez modifier librement : stock initial, encaissements, décaissements, horizon.
+          Le tableau montre la trésorerie en début et fin de période.
+        </p>
+        <p style={{ marginBottom: 0 }}>
+          Cliquez sur <b>Continuer</b> pour passer à R2.
+        </p>
+      </>
+   
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  );
+  }
+
+  // step 2 : R2 (objectif tôt sauf Vision 3)
+  if (step === 2) {
+    if (snap.visionIndex === 2) {
+      return (
+        <>
+          <p style={{ marginTop: 0 }}>
+            Dans la <b>Vision 3</b>, <b>R2</b> sert d’abord à préciser la structure des flux (salaire +
+            activité, dépenses personnelles + dépenses d’activité). L’objectif minimal viendra en R3.
+          </p>
+          <p style={{ marginBottom: 0 }}>
+            Cliquez sur <b>Continuer</b> pour passer à R3 (objectif minimal).
+          </p>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <p style={{ marginTop: 0 }}>
+          <b>R2</b> introduit l’<b>objectif minimal</b>. On peut déjà dire si la trajectoire atteint
+          l’objectif (avec les valeurs actuelles des encaissements/décaissements).
+        </p>
+        <p style={{ marginBottom: 0 }}>
+          Cliquez sur <b>Continuer</b> pour passer à R3 (interprétation des flux).
+        </p>
+      </>
+    );
+  }
+
+  // step 3 : R3 (interprétation)
+  return (
+    <>
+      <p style={{ marginTop: 0 }}>
+        <b>R3</b> explicite ce que représentent les flux : salaire, dépenses personnelles.
+      </p>
+      <p style={{ marginBottom: 0 }}>
+        Vous voyez le stock final et le verdict <b>objectif atteint / non atteint</b>. Ensuite, vous
+        passez à la vision suivante (ou retour à l’accueil à la fin de la vision 3).
+      </p>
+    </>
+  );
+}
+
+
   function persist(next: SnapshotV1) {
     const saved = { ...next, savedAtIso: new Date().toISOString() };
     setSnap(saved);
@@ -627,6 +729,10 @@ export default function ParcoursPage() {
 
       {step === 0 && (
         <Card title="Définition de la vision (langage courant)">
+         <HelpPanel title={helpTitle()}>
+  {helpContent()}
+</HelpPanel>
+
           <p style={{ marginTop: 0, color: C.secondary }}>
             Vision en cours : <b>{snap.visionLabel}</b>
           </p>
@@ -657,6 +763,11 @@ export default function ParcoursPage() {
 
       {step === 1 && (
         <Card title="R1 — Trésorerie : encaissements et décaissements fixes">
+<HelpPanel title={helpTitle()}>
+  {helpContent()}
+</HelpPanel>
+
+
           <p style={{ marginTop: 0, color: C.secondary, fontSize: 14 }}>
             Objectif de la page : faire comprendre comment la trésorerie varie en fonction des encaissements et décaissements fixes sur toute la période.
           </p>
@@ -773,6 +884,11 @@ export default function ParcoursPage() {
               : 'R2 — Objectif minimal'
           }
         >
+<HelpPanel title={helpTitle()}>
+  {helpContent()}
+</HelpPanel>
+
+
           <ContinueBar onContinue={onContinue} disabled={!canContinue} />
 
           {snap.mode === 'preset' && snap.visionIndex === 2 ? (
@@ -960,6 +1076,11 @@ export default function ParcoursPage() {
 
       {step === 3 && (
         <Card title="R3 — Interprétation (équations)">
+
+<HelpPanel title={helpTitle()}>
+  {helpContent()}
+</HelpPanel>
+
           <p style={{ marginTop: 0, color: C.secondary, fontSize: 14 }}>
             {snap.mode === 'preset' && snap.visionIndex === 2
               ? "Ici, l’objectif minimal arrive après la décomposition des flux : on confronte maintenant la structure détaillée à l’objectif."

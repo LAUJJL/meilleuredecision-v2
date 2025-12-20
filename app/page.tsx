@@ -14,6 +14,29 @@ export default function HomePage() {
         Vous suivez un exemple guidé : on commence par définir le problème, puis on explore plusieurs manières de le traiter.
       </p>
 
+       <p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 18 }}>
+  L’objectif de ce site est d’aider un visiteur, ou un groupe de visiteurs,
+  à améliorer ses chances de prendre une bonne décision lorsqu’il existe
+  plusieurs possibilités.
+</p>
+
+<p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 18 }}>
+  Cette aide repose à la fois sur :
+  <br />– des éléments qualitatifs (la manière de voir et de structurer la situation),
+  <br />– et des éléments quantitatifs (des ordres de grandeur et leurs effets dans le temps).
+</p>
+
+<p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 24 }}>
+  Cette première version n’a pas vocation à fournir une aide complète à la décision.
+  Elle vise à faire comprendre les bases de la méthode, qui sera développée
+  dans les versions suivantes pour traiter des problèmes réels proposés par le visiteur.
+</p>
+
+<p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 32 }}>
+  Pour illustrer la démarche, nous utilisons volontairement un problème très simple.
+</p>
+
+
       <h2 style={{ fontSize: 22, marginBottom: 12 }}>
         Démarrer l’exemple guidé
       </h2>
