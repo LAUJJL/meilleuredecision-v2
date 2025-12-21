@@ -51,6 +51,18 @@ export default function HomePage() {
         <br />
         Ce qui sera fait ultérieurement : problèmes libres, modèles modifiables, davantage de visions et de raffinements.
       </p>
+ <div style={{ marginTop: 18, fontSize: 13 }}>
+  <a href="/mentions-legales" style={{ textDecoration: "none" }}>
+    Mentions légales
+  </a>
+  {" · "}
+  <a href="/contact" style={{ textDecoration: "none" }}>
+    Contact
+  </a>
+</div>
+
+
+ 
     </main>
   );
 }
