@@ -32,8 +32,16 @@ export default function ContactPage() {
       </ul>
 
       <p style={{ marginTop: 18 }}>
-        📧 <a href="mailto:contact@decidermieux.com">contact@decidermieux.com</a>
-      </p>
+  📧{" "}
+  <a href="mailto:contact@decidermieux.com" style={{ textDecoration: "underline" }}>
+    contact@decidermieux.com
+  </a>
+</p>
+
+<p style={{ fontSize: 14, marginTop: 6 }}>
+  Si le lien ne s’ouvre pas, copiez-collez l’adresse dans votre messagerie.
+</p>
+
 
       <p style={{ marginTop: 24, fontSize: 14 }}>
         Il n’y a pas d’inscription automatique ni de suivi des visiteurs.
