@@ -1,68 +1,47 @@
+// app/page.tsx
+import Link from "next/link";
+
 export default function HomePage() {
   return (
-    <main style={{ maxWidth: 820, margin: "48px auto", padding: 16 }}>
-      <h1 style={{ fontSize: 34, lineHeight: 1.2, marginBottom: 16 }}>
-        Aider à prendre de meilleures décisions
-      </h1>
+    <main className="mx-auto max-w-3xl px-6 py-16">
+      {/* Texte principal */}
+      <section className="space-y-5">
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Un problème flou peut devenir clair — étape par étape.
+        </h1>
 
-      <p style={{ fontSize: 18, lineHeight: 1.6, marginBottom: 18 }}>
-        Ce site montre une méthode pour <strong>prendre de meilleures décisions</strong>, lorsque l’on
-        hésite, que les enjeux sont importants, ou que l’on ne sait pas encore comment aborder un problème.
-      </p>
+        <p className="text-lg">
+          Clarifier un problème est la première condition pour décider mieux.
+        </p>
 
-      <p style={{ fontSize: 18, lineHeight: 1.6, marginBottom: 28 }}>
-        Vous suivez un exemple guidé : on commence par définir le problème, puis on explore plusieurs manières de le traiter.
-      </p>
+        <p className="text-base opacity-80">
+          Voyez comment un raisonnement se construit par raffinements successifs.
+        </p>
+      </section>
 
-       <p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 18 }}>
-  L’objectif de ce site est d’aider un visiteur, ou un groupe de visiteurs,
-  à améliorer ses chances de prendre une bonne décision lorsqu’il existe
-  plusieurs possibilités.
-</p>
+      {/* Action principale */}
+      <section className="mt-10 space-y-3">
+        <Link
+          href="/probleme"
+          className="inline-flex items-center justify-center rounded-md border px-5 py-3 text-base font-medium shadow-sm"
+        >
+          ▶︎ Voir un exemple guidé
+        </Link>
 
-<p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 18 }}>
-  Cette aide repose à la fois sur :
-  <br />– des éléments qualitatifs (la manière de voir et de structurer la situation),
-  <br />– et des éléments quantitatifs (des ordres de grandeur et leurs effets dans le temps).
-</p>
+        <p className="text-sm opacity-70">
+          Aucune inscription. Aucun engagement.
+        </p>
+      </section>
 
-<p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 24 }}>
-  Cette première version n’a pas vocation à fournir une aide complète à la décision.
-  Elle vise à faire comprendre les bases de la méthode, qui sera développée
-  dans les versions suivantes pour traiter des problèmes réels proposés par le visiteur.
-</p>
-
-<p style={{ fontSize: 16, lineHeight: 1.6, marginBottom: 32 }}>
-  Pour illustrer la démarche, nous utilisons volontairement un problème très simple.
-</p>
-
-
-      <h2 style={{ fontSize: 22, marginBottom: 12 }}>
-        Démarrer l’exemple guidé
-      </h2>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <a href="/probleme">Commencer l’exemple guidé</a>
-  
-      </div>
-
-      <p style={{ fontSize: 13, color: "inherit", marginTop: 28, lineHeight: 1.5 }}>
-        Ce site est volontairement simplifié. Il sert à illustrer une méthode et non à couvrir des situations complexes.
-        <br />
-        Ce qui sera fait ultérieurement : problèmes libres, modèles modifiables, davantage de visions et de raffinements.
-      </p>
- <div style={{ marginTop: 18, fontSize: 13 }}>
-  <a href="/mentions-legales" style={{ textDecoration: "none" }}>
-    Mentions légales
-  </a>
-  {" · "}
-  <a href="/contact" style={{ textDecoration: "none" }}>
-    Contact
-  </a>
-</div>
-
-
- 
+      {/* Liens secondaires */}
+      <footer className="mt-16 flex gap-6 text-sm opacity-70">
+        <Link href="/mentions-legales" className="hover:underline">
+          Mentions légales
+        </Link>
+        <Link href="/contact" className="hover:underline">
+          Contact
+        </Link>
+      </footer>
     </main>
   );
 }

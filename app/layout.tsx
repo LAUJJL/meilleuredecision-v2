@@ -19,7 +19,9 @@ function isZDomain(host: string) {
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-  const host = headers().get("host") ?? "";
+const h: any = headers();
+const host = (typeof h?.get === "function" ? h.get("host") : h?.host) ?? "";
+  
   const z = isZDomain(host);
 
   // Baseline / titre onglet
