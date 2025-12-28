@@ -64,10 +64,7 @@ export default function ProblemePage() {
           <li>Objectif de trésorerie à {horizonMois} mois : <b>{objectif.toLocaleString("fr-FR")} €</b></li>
         </ul>
 
-        <p style={{ marginTop: 10, marginBottom: 0, color: "#555" }}>
-          En V1.5, vous choisirez ensuite une vision (rester salarié ou ajouter une activité) et vous verrez
-          le raisonnement se construire par raffinements.
-        </p>
+        
       </section>
 
       {/* Continuer en bas */}
