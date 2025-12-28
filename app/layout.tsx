@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { ReadingModeProvider } from "./components/readingMode";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,9 +20,9 @@ function isZDomain(host: string) {
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-const h: any = headers();
-const host = (typeof h?.get === "function" ? h.get("host") : h?.host) ?? "";
-  
+  const h: any = headers();
+  const host = (typeof h?.get === "function" ? h.get("host") : h?.host) ?? "";
+
   const z = isZDomain(host);
 
   // Baseline / titre onglet
@@ -47,7 +48,9 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+        <ReadingModeProvider>
+          {children}
+        </ReadingModeProvider>
       </body>
     </html>
   );

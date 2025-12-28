@@ -1,72 +1,59 @@
 'use client';
+
 import HelpPanel from "../components/HelpPanel";
-
-import React, { useEffect, useMemo, useState } from 'react';
-
-type Mode = 'preset' | 'custom';
+import React, { useEffect, useMemo, useState } from "react";
+import { ReadingModeBar, DetailsOnly } from "../components/readingMode";
 
 type SnapshotV1 = {
   version: 1;
   savedAtIso: string;
 
-  mode: Mode;
-
-  // Définition de la vision (langage courant)
   defShortVision: string;
   defLongVision: string;
 
-  // Structure de stock / flux / horizon
   stockLabel: string;
   unit: string;
   horizon: number;
   flowInLabel: string;
   flowOutLabel: string;
 
-  // R1 : paramètres de base
+  // Paramètres libres (R1 et parfois R2)
   initialStock: number;
   r1_inflow: number;
   r1_outflow: number;
 
-  // Objectif minimal (selon la descente, introduit en R2 ou en R3)
+  // Objectif (valeur fixée, introduite tôt ou tard selon la vision)
   target: number;
 
-  // Décomposition / équations
-  salary: number;
-  personalExpenses: number;
+  // Paramètres fixés (cas présenté) utilisés en R2 (Vision 3) et/ou R3
+  fixedInitialStock: number;
+  fixedInflow: number;
+  fixedOutflow: number;
 
-  addInflowLabel: string;
-  addOutflowLabel: string;
-  addInflow: number;
-  addOutflow: number;
-  addFromPeriod: number;
+  // Explication “métier” des flux (pour les détails)
+  fixedInflowMeaning: string;   // ex: "salaire mensuel"
+  fixedOutflowMeaning: string;  // ex: "dépenses personnelles"
 
-  // Vision préétablie
   visionIndex: 0 | 1 | 2;
   visionLabel: string;
 };
 
-const LS_KEY = 'current_problem_v1_parcours';
-const FLAG_KEY = 'has_seen_preset_v1';
-
-// Palette minimaliste cohérente
 const C = {
-  text: '#111',
-  secondary: '#444',
-  hint: '#666',
-  border: '#ddd',
-  softBorder: '#eee',
-  link: '#0b5fff',
-  ok: '#166534',
-  bad: '#b91c1c',
-  bgDisabled: '#f3f4f6',
+  text: "#111",
+  secondary: "#444",
+  border: "#ddd",
+  softBorder: "#eee",
+  link: "#0b5fff",
+  ok: "#166534",
+  bad: "#b91c1c",
+  bgDisabled: "#f3f4f6",
 };
 
 const toNumber = (s: string) => {
-  const x = Number(String(s).replace(',', '.'));
+  const x = Number(String(s).replace(",", "."));
   return Number.isFinite(x) ? x : NaN;
 };
-const clampInt = (v: number, min: number, max: number) =>
-  Math.max(min, Math.min(max, Math.round(v)));
+
 const fmt = (n: number) => {
   const v = Math.round((n + Number.EPSILON) * 100) / 100;
   return String(v);
@@ -75,39 +62,18 @@ const fmt = (n: number) => {
 function computeTable({
   initialStock,
   horizon,
-  baseInflow,
-  baseOutflow,
-  addFromPeriod,
-  addInflow,
-  addOutflow,
+  inflow,
+  outflow,
 }: {
   initialStock: number;
   horizon: number;
-  baseInflow: number;
-  baseOutflow: number;
-  addFromPeriod?: number;
-  addInflow?: number;
-  addOutflow?: number;
+  inflow: number;
+  outflow: number;
 }) {
-  const rows: Array<{
-    t: number;
-    stockStart: number;
-    inflow: number;
-    outflow: number;
-    stockEnd: number;
-  }> = [];
+  const rows: Array<{ t: number; stockStart: number; inflow: number; outflow: number; stockEnd: number }> = [];
   let stock = initialStock;
 
   for (let t = 1; t <= horizon; t++) {
-    const add =
-      addFromPeriod != null &&
-      addInflow != null &&
-      addOutflow != null &&
-      t >= addFromPeriod;
-
-    const inflow = baseInflow + (add ? addInflow : 0);
-    const outflow = baseOutflow + (add ? addOutflow : 0);
-
     const stockEnd = stock + (inflow - outflow);
     rows.push({ t, stockStart: stock, inflow, outflow, stockEnd });
     stock = stockEnd;
@@ -119,46 +85,25 @@ function computeTable({
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section
-      style={{
-        border: `1px solid ${C.border}`,
-        borderRadius: 12,
-        padding: 16,
-        marginTop: 14,
-      }}
-    >
+    <section style={{ border: `1px solid ${C.border}`, borderRadius: 12, padding: 16, marginTop: 14 }}>
       <h2 style={{ marginTop: 0, color: C.text }}>{title}</h2>
       {children}
     </section>
   );
 }
 
-function ContinueBar({
-  onContinue,
-  disabled,
-}: {
-  onContinue: () => void;
-  disabled?: boolean;
-}) {
+function ContinueBar({ onContinue, disabled }: { onContinue: () => void; disabled?: boolean }) {
   return (
-    <div
-      style={{
-        marginTop: 18,
-        display: 'flex',
-        justifyContent: 'flex-end',
-        alignItems: 'center',
-        gap: 12,
-      }}
-    >
+    <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, marginTop: 12 }}>
       <button
         onClick={onContinue}
         disabled={!!disabled}
         style={{
-          padding: '10px 16px',
+          padding: "10px 16px",
           borderRadius: 10,
           border: `1px solid ${C.border}`,
-          background: disabled ? C.bgDisabled : 'white',
-          cursor: disabled ? 'not-allowed' : 'pointer',
+          background: disabled ? C.bgDisabled : "white",
+          cursor: disabled ? "not-allowed" : "pointer",
           fontSize: 16,
           color: C.text,
         }}
@@ -173,62 +118,41 @@ function InputRow({
   label,
   value,
   onChange,
-  placeholder,
-  width = 420,
   disabled = false,
-  multiline = false,
+  placeholder,
 }: {
   label: string;
   value: string | number;
   onChange: (v: string) => void;
-  placeholder?: string;
-  width?: number;
   disabled?: boolean;
-  multiline?: boolean;
+  placeholder?: string;
 }) {
   return (
     <div
       style={{
-        display: 'flex',
-        flexDirection: 'column',
+        display: "flex",
+        flexDirection: "column",
         gap: 6,
         marginTop: 10,
-        maxWidth: width,
+        maxWidth: 460,
         opacity: disabled ? 0.75 : 1,
       }}
     >
       <div style={{ fontSize: 14, color: C.text }}>{label}</div>
-      {multiline ? (
-        <textarea
-          value={String(value)}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          rows={4}
-          style={{
-            padding: '9px 10px',
-            borderRadius: 10,
-            border: `1px solid ${C.border}`,
-            fontSize: 15,
-            width: '100%',
-            resize: 'vertical',
-            color: C.text,
-          }} />
-      ) : (
-        <input
-          value={String(value)}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          style={{
-            padding: '9px 10px',
-            borderRadius: 10,
-            border: `1px solid ${C.border}`,
-            fontSize: 15,
-            width: '100%',
-            color: C.text,
-          }} />
-      )}
+      <input
+        value={String(value)}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={placeholder}
+        style={{
+          padding: "9px 10px",
+          borderRadius: 10,
+          border: `1px solid ${C.border}`,
+          fontSize: 15,
+          width: "100%",
+          color: C.text,
+        }}
+      />
     </div>
   );
 }
@@ -239,37 +163,21 @@ function TableAlwaysVisible({
   flowInLabel,
   flowOutLabel,
 }: {
-  rows: Array<{
-    t: number;
-    stockStart: number;
-    inflow: number;
-    outflow: number;
-    stockEnd: number;
-  }>;
+  rows: Array<{ t: number; stockStart: number; inflow: number; outflow: number; stockEnd: number }>;
   stockLabel: string;
   flowInLabel: string;
   flowOutLabel: string;
 }) {
   return (
-    <div style={{ overflowX: 'auto', marginTop: 12 }}>
-      <table style={{ borderCollapse: 'collapse', minWidth: 860 }}>
+    <div style={{ overflowX: "auto", marginTop: 12 }}>
+      <table style={{ borderCollapse: "collapse", minWidth: 860 }}>
         <thead>
           <tr>
-            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: 'left' }}>
-              Période
-            </th>
-            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: 'left' }}>
-              {stockLabel} début
-            </th>
-            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: 'left' }}>
-              {flowInLabel}
-            </th>
-            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: 'left' }}>
-              {flowOutLabel}
-            </th>
-            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: 'left' }}>
-              {stockLabel} fin
-            </th>
+            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: "left" }}>Période</th>
+            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: "left" }}>{stockLabel} début</th>
+            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: "left" }}>{flowInLabel}</th>
+            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: "left" }}>{flowOutLabel}</th>
+            <th style={{ border: `1px solid ${C.border}`, padding: 8, textAlign: "left" }}>{stockLabel} fin</th>
           </tr>
         </thead>
         <tbody>
@@ -288,21 +196,20 @@ function TableAlwaysVisible({
   );
 }
 
-function defaultSnapshotPreset(): SnapshotV1 {
+function defaultSnapshot(): SnapshotV1 {
   return {
     version: 1,
     savedAtIso: new Date().toISOString(),
-    mode: 'preset',
 
-    defShortVision: 'Je reste salarié avec un revenu stable et des dépenses maîtrisées.',
+    defShortVision: "Je reste salarié.",
     defLongVision:
-      "Dans cette vision, je garde mon activité salariée avec un salaire de 3000 € et des dépenses mensuelles de 2500 €. Je souhaite voir si cette situation permet d’atteindre l’objectif de trésorerie de 10 000 € dans 12 mois.",
+      "Je reste salarié avec un salaire et des dépenses personnelles. L’objectif est d’évaluer si cette situation permet d’atteindre un objectif de trésorerie dans un horizon donné.",
 
-    stockLabel: 'Trésorerie',
-    unit: 'euros',
+    stockLabel: "Trésorerie",
+    unit: "euros",
     horizon: 12,
-    flowInLabel: 'Encaissements',
-    flowOutLabel: 'Décaissements',
+    flowInLabel: "Encaissements",
+    flowOutLabel: "Décaissements",
 
     initialStock: 3000,
     r1_inflow: 3000,
@@ -310,353 +217,127 @@ function defaultSnapshotPreset(): SnapshotV1 {
 
     target: 10000,
 
-    salary: 3000,
-    personalExpenses: 2500,
-
-    addInflowLabel: "Revenu d'activité",
-    addOutflowLabel: "Dépenses d'activité",
-    addInflow: 0,
-    addOutflow: 0,
-    addFromPeriod: 4,
+    // Paramètres fixés (cas présenté)
+    fixedInitialStock: 3000,
+    fixedInflow: 3000,
+    fixedOutflow: 2500,
+    fixedInflowMeaning: "salaire mensuel",
+    fixedOutflowMeaning: "dépenses personnelles",
 
     visionIndex: 0,
-    visionLabel: 'Vision 1 — Rester salarié',
+    visionLabel: "Vision 1 — Rester salarié",
   };
 }
 
 export default function ParcoursPage() {
-  // step 0 : définition de la vision (langage courant)
-  // step 1 : R1
-  // step 2 : R2
-  // step 3 : R3
-  const [step, setStep] = useState(0);
-  const [snap, setSnap] = useState<SnapshotV1>(() => defaultSnapshotPreset());
-  const [addFromPeriodDraft, setAddFromPeriodDraft] = useState<string>('1');
+  const [step, setStep] = useState(0); // 0 Vision, 1 R1, 2 R2, 3 R3
+  const [snap, setSnap] = useState<SnapshotV1>(() => defaultSnapshot());
 
-function helpTitle() {
-  const s = step === 0 ? "Vision" : step === 1 ? "R1" : step === 2 ? "R2" : "R3";
-  return `Aide — ${snap.visionLabel} — ${s}`;
-}
+  // Drafts pour permettre effacement / saisie libre
+  const [stockDraft, setStockDraft] = useState("3000");
+  const [inDraft, setInDraft] = useState("3000");
+  const [outDraft, setOutDraft] = useState("2500");
 
-function helpContent() {
-  // step 0 : définition de la vision
-  if (step === 0) {
-    return (
-      <>
-        <p style={{ marginTop: 0 }}>
-          Cette page décrit la <b>vision</b> en langage courant (définition courte et longue).
-        </p>
-        <p style={{ marginBottom: 0 }}>
-          Cliquez sur <b>Continuer</b> pour passer au premier raffinement (R1).
-        </p>
-      </>
-    );
+  const LOCK_STRUCTURE = true;
+
+  function syncDraftsFrom(s: SnapshotV1) {
+    setStockDraft(String(s.initialStock));
+    setInDraft(String(s.r1_inflow));
+    setOutDraft(String(s.r1_outflow));
   }
 
-  // step 1 : R1 (conceptuel, sans objectif)
-  if (step === 1) {
-    return (
-      <>
-        <p style={{ marginTop: 0 }}>
-          <b>R1</b> est le point de départ commun : un stock (ici la trésorerie) évolue sous l’effet
-          d’<b>encaissements</b> et de <b>décaissements</b> supposés constants sur l’horizon.
-        </p>
-        <p>
-          Vous pouvez modifier librement : stock initial, encaissements, décaissements, horizon.
-          Le tableau montre la trésorerie en début et fin de période.
-        </p>
-        <p style={{ marginBottom: 0 }}>
-          Cliquez sur <b>Continuer</b> pour passer à R2.
-        </p>
-      </>
-   
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  
-  );
-  }
-
-  // step 2 : R2 (objectif tôt sauf Vision 3)
-  if (step === 2) {
-    if (snap.visionIndex === 2) {
-      return (
-        <>
-          <p style={{ marginTop: 0 }}>
-            Dans la <b>Vision 3</b>, <b>R2</b> sert d’abord à préciser la structure des flux (salaire +
-            activité, dépenses personnelles + dépenses d’activité). L’objectif minimal viendra en R3.
-          </p>
-          <p style={{ marginBottom: 0 }}>
-            Cliquez sur <b>Continuer</b> pour passer à R3 (objectif minimal).
-          </p>
-        </>
-      );
-    }
-
-    return (
-      <>
-        <p style={{ marginTop: 0 }}>
-          <b>R2</b> introduit l’<b>objectif minimal</b>. On peut déjà dire si la trajectoire atteint
-          l’objectif (avec les valeurs actuelles des encaissements/décaissements).
-        </p>
-        <p style={{ marginBottom: 0 }}>
-          Cliquez sur <b>Continuer</b> pour passer à R3 (interprétation des flux).
-        </p>
-      </>
-    );
-  }
-
-  // step 3 : R3 (interprétation)
-  return (
-    <>
-      <p style={{ marginTop: 0 }}>
-        <b>R3</b> explicite ce que représentent les flux : salaire, dépenses personnelles.
-      </p>
-      <p style={{ marginBottom: 0 }}>
-        Vous voyez le stock final et le verdict <b>objectif atteint / non atteint</b>. Ensuite, vous
-        passez à la vision suivante (ou retour à l’accueil à la fin de la vision 3).
-      </p>
-    </>
-  );
-}
-
-
-  function persist(next: SnapshotV1) {
-    const saved = { ...next, savedAtIso: new Date().toISOString() };
-    setSnap(saved);
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(saved));
-    } catch {
-      // ignore
-    }
-  }
-
-  function applyVisionPreset(idx: 0 | 1 | 2) {
+  function applyVision(idx: 0 | 1 | 2) {
     if (idx === 0) {
       const v: SnapshotV1 = {
-        ...defaultSnapshotPreset(),
-        defShortVision: 'Je reste salarié avec un revenu stable et des dépenses maîtrisées.',
-        defLongVision:
-          "Dans cette vision, je garde mon activité salariée avec un salaire de 3000 € et des dépenses mensuelles de 2500 €. Je souhaite voir si cette situation permet d’atteindre l’objectif de trésorerie de 10 000 € dans 12 mois.",
-        initialStock: 3000,
-        r1_inflow: 3000,
-        r1_outflow: 2500,
-        target: 10000,
-        salary: 3000,
-        personalExpenses: 2500,
-        addInflowLabel: "Revenu d'activité",
-        addOutflowLabel: "Dépenses d'activité",
-        addInflow: 0,
-        addOutflow: 0,
-        addFromPeriod: 4,
+        ...defaultSnapshot(),
         visionIndex: 0,
-        visionLabel: 'Vision 1 — Rester salarié',
-      };
-      persist(v);
-      setAddFromPeriodDraft(String(v.addFromPeriod));
-    } else if (idx === 1) {
-      const v: SnapshotV1 = {
-        ...defaultSnapshotPreset(),
-        defShortVision:
-          'Je lance une micro-activité et je compare cette option assez tôt à un objectif minimal.',
+        visionLabel: "Vision 1 — Rester salarié",
+        defShortVision: "Je reste salarié.",
         defLongVision:
-          "Dans cette vision, je lance une micro-activité rapportant 4000 € par mois avec 3000 € de dépenses. Je fixe assez tôt un objectif minimal de 10 000 € de trésorerie à 12 mois, puis j’affine la structure pour voir si cette option permet de l’atteindre et avec quel stock final.",
-        initialStock: 3000,
-        r1_inflow: 4000,
-        r1_outflow: 3000,
-        target: 10000,
-        salary: 3000,
-        personalExpenses: 2500,
-        addInflowLabel: "Revenu d'activité",
-        addOutflowLabel: "Dépenses d'activité",
-        addInflow: 1000,
-        addOutflow: 500,
-        addFromPeriod: 1,
-        visionIndex: 1,
-        visionLabel: 'Vision 2 — Micro-activité (objectif tôt)',
+          "Je reste salarié avec un salaire et des dépenses personnelles. L’objectif est d’évaluer si cette situation permet d’atteindre un objectif de trésorerie dans un horizon donné.",
       };
-      persist(v);
-      setAddFromPeriodDraft(String(v.addFromPeriod));
-    } else {
-      const v: SnapshotV1 = {
-        ...defaultSnapshotPreset(),
-        defShortVision:
-          'Je considère la même micro-activité, mais avec une autre descente : je détaille d’abord la structure, puis je n’introduis l’objectif minimal qu’à la fin.',
-        defLongVision:
-          "Cette vision utilise les mêmes hypothèses de base que la micro-activité : un salaire personnel, des dépenses personnelles, et des flux d’activité (revenus et dépenses) à préciser. Mais la descente de raffinements est différente : au lieu de comparer très tôt la vision à l’objectif minimal, on choisit d’abord de décomposer complètement les flux — salaire + revenu d’activité, dépenses personnelles + dépenses d’activité — puis seulement ensuite, dans un troisième temps, on confronte cette structure détaillée à l’objectif minimal de 10 000 € à 12 mois.",
-        initialStock: 3000,
-        r1_inflow: 4000,
-        r1_outflow: 3000,
-        target: 10000,
-        salary: 3000,
-        personalExpenses: 2500,
-        addInflowLabel: "Revenu d'activité",
-        addOutflowLabel: "Dépenses d'activité",
-        addInflow: 1000,
-        addOutflow: 500,
-        addFromPeriod: 1,
-        visionIndex: 2,
-        visionLabel: 'Vision 3 — Micro-activité (objectif tard)',
-      };
-      persist(v);
-      setAddFromPeriodDraft(String(v.addFromPeriod));
+      setSnap(v);
+      syncDraftsFrom(v);
+      setStep(0);
+      return;
     }
+
+    if (idx === 1) {
+      const v: SnapshotV1 = {
+        ...defaultSnapshot(),
+        visionIndex: 1,
+        visionLabel: "Vision 2 — Objectif introduit tôt",
+        defShortVision: "Objectif introduit tôt.",
+        defLongVision:
+          "On introduit l’objectif dès R2 : on obtient tôt un diagnostic (objectif atteint / non atteint), puis on précise ensuite les paramètres (R3).",
+      };
+      setSnap(v);
+      syncDraftsFrom(v);
+      setStep(0);
+      return;
+    }
+
+    const v: SnapshotV1 = {
+      ...defaultSnapshot(),
+      visionIndex: 2,
+      visionLabel: "Vision 3 — Objectif introduit tard",
+      defShortVision: "Objectif introduit tard.",
+      defLongVision:
+        "On commence par fixer la réalité (stock de départ, encaissements, décaissements) sans parler d’objectif. L’objectif n’est introduit qu’en R3 : on juge ensuite si la réalité permet de l’atteindre.",
+    };
+    setSnap(v);
+    syncDraftsFrom(v);
     setStep(0);
   }
 
   useEffect(() => {
-    // V1 : on FORCE preset, même si ?mode=custom est présent.
-    const mode: Mode = 'preset';
-
-    // Si l'URL contient ?vision=1|2|3, on démarre directement sur cette vision (sans reprise localStorage).
     try {
       const params = new URLSearchParams(window.location.search);
-      const v = params.get('vision');
+      const v = params.get("vision");
       if (v) {
         const n = Number(v);
         const idx = n === 2 ? 1 : n === 3 ? 2 : 0;
-        applyVisionPreset(idx as 0 | 1 | 2);
+        applyVision(idx as 0 | 1 | 2);
         return;
       }
     } catch {
       // ignore
     }
-
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as SnapshotV1;
-        if (parsed && parsed.version === 1 && parsed.mode === mode) {
-          setSnap(parsed);
-          setAddFromPeriodDraft(String(parsed.addFromPeriod ?? 1));
-          return;
-        }
-      }
-    } catch {
-      // ignore
-    }
-
-    applyVisionPreset(0);
+    applyVision(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const lockNames = snap.mode === 'preset';
-
-  const tableR1R2 = useMemo(
+  // Tables
+  const tableFree = useMemo(
     () =>
       computeTable({
         initialStock: snap.initialStock,
         horizon: snap.horizon,
-        baseInflow: snap.r1_inflow,
-        baseOutflow: snap.r1_outflow,
+        inflow: snap.r1_inflow,
+        outflow: snap.r1_outflow,
       }),
     [snap.initialStock, snap.horizon, snap.r1_inflow, snap.r1_outflow]
   );
 
-  const tableR3 = useMemo(() => {
-    if (snap.mode === 'preset' && snap.visionIndex === 0) {
-      // Vision 1 : pas d'activité ajoutée (R3 = salaire / dépenses pers.)
-      return computeTable({
-        initialStock: snap.initialStock,
+  const tableFixed = useMemo(
+    () =>
+      computeTable({
+        initialStock: snap.fixedInitialStock,
         horizon: snap.horizon,
-        baseInflow: snap.salary,
-        baseOutflow: snap.personalExpenses,
-      });
-    }
-    // Visions 2 et 3 : flux additionnels possibles
-    return computeTable({
-      initialStock: snap.initialStock,
-      horizon: snap.horizon,
-      baseInflow: snap.salary,
-      baseOutflow: snap.personalExpenses,
-      addFromPeriod: snap.addFromPeriod,
-      addInflow: snap.addInflow,
-      addOutflow: snap.addOutflow,
-    });
-  }, [
-    snap.mode,
-    snap.visionIndex,
-    snap.initialStock,
-    snap.horizon,
-    snap.salary,
-    snap.personalExpenses,
-    snap.addFromPeriod,
-    snap.addInflow,
-    snap.addOutflow,
-  ]);
-
-  const atteintR1R2 = useMemo(
-    () => tableR1R2.stockFinal - snap.target >= 0,
-    [tableR1R2.stockFinal, snap.target]
-  );
-  const atteintR3 = useMemo(
-    () => tableR3.stockFinal - snap.target >= 0,
-    [tableR3.stockFinal, snap.target]
+        inflow: snap.fixedInflow,
+        outflow: snap.fixedOutflow,
+      }),
+    [snap.fixedInitialStock, snap.horizon, snap.fixedInflow, snap.fixedOutflow]
   );
 
-  const canContinue = useMemo(() => {
-    if (step === 0) return true;
-
-    if (step === 1) {
-      return (
-        Number.isFinite(snap.horizon) &&
-        snap.horizon >= 1 &&
-        Number.isFinite(snap.initialStock) &&
-        Number.isFinite(snap.r1_inflow) &&
-        Number.isFinite(snap.r1_outflow)
-      );
-    }
-
-    if (step === 2) {
-      // Vision 3 : R2 = décomposition des flux, sans objectif “nouveau”
-      if (snap.mode === 'preset' && snap.visionIndex === 2) {
-        if (!Number.isFinite(snap.salary) || !Number.isFinite(snap.personalExpenses))
-          return false;
-        if (
-          !Number.isFinite(snap.addInflow) ||
-          !Number.isFinite(snap.addOutflow) ||
-          !Number.isFinite(snap.addFromPeriod)
-        )
-          return false;
-        return snap.addFromPeriod >= 1 && snap.addFromPeriod <= snap.horizon;
-      }
-      // Autres visions : R2 = objectif minimal
-      return Number.isFinite(snap.target);
-    }
-
-    if (step === 3) {
-      if (!Number.isFinite(snap.target)) return false;
-      if (!Number.isFinite(snap.salary) || !Number.isFinite(snap.personalExpenses))
-        return false;
-      if (snap.mode === 'preset' && snap.visionIndex === 0) return true;
-      return (
-        Number.isFinite(snap.addInflow) &&
-        Number.isFinite(snap.addOutflow) &&
-        Number.isFinite(snap.addFromPeriod) &&
-        snap.addFromPeriod >= 1 &&
-        snap.addFromPeriod <= snap.horizon
-      );
-    }
-
-    return true;
-  }, [step, snap]);
+  // Diagnostics
+  const atteintR2_V1V2 = tableFree.stockFinal - snap.target >= 0;
+  const atteintR3_V1V2 = tableFixed.stockFinal - snap.target >= 0;
+  const atteintR3_V3 = tableFixed.stockFinal - snap.target >= 0;
 
   function goBack() {
     if (step === 0) {
-      window.location.href = '/';
+      window.location.href = "/choisir-vision";
       return;
     }
     setStep((s) => Math.max(0, s - 1));
@@ -664,90 +345,74 @@ function helpContent() {
 
   function onContinue() {
     if (step === 3) {
-      if (snap.mode === 'preset') {
-        if (snap.visionIndex < 2) {
-          const next = (snap.visionIndex + 1) as 1 | 2;
-          applyVisionPreset(next);
-          return;
-        }
-        try {
-          localStorage.setItem(FLAG_KEY, 'true');
-        } catch {
-          // ignore
-        }
-        window.location.href = '/';
+      if (snap.visionIndex < 2) {
+        applyVision((snap.visionIndex + 1) as 1 | 2);
         return;
       }
-      window.location.href = '/';
+      window.location.href = "/";
       return;
     }
     setStep((s) => Math.min(3, s + 1));
   }
 
+  // Handlers paramètres libres
+  function onChangeStock(v: string) {
+    setStockDraft(v);
+    const n = toNumber(v);
+    if (Number.isFinite(n)) setSnap((p) => ({ ...p, initialStock: n }));
+  }
+  function onChangeIn(v: string) {
+    setInDraft(v);
+    const n = toNumber(v);
+    if (Number.isFinite(n)) setSnap((p) => ({ ...p, r1_inflow: n }));
+  }
+  function onChangeOut(v: string) {
+    setOutDraft(v);
+    const n = toNumber(v);
+    if (Number.isFinite(n)) setSnap((p) => ({ ...p, r1_outflow: n }));
+  }
+
+  function helpTitle() {
+    const s = step === 0 ? "Vision" : step === 1 ? "R1" : step === 2 ? "R2" : "R3";
+    return `Aide — ${snap.visionLabel} — ${s}`;
+  }
+
+  const showModeBar = step === 1 || step === 2 || step === 3;
+
   return (
-    <main
-      style={{
-        padding: 40,
-        maxWidth: 980,
-        margin: '0 auto',
-        fontFamily: 'system-ui, sans-serif',
-        color: C.text,
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          gap: 12,
-        }}
-      >
-        <div>
-          <h1 style={{ margin: 0, color: C.text }}>{snap.visionLabel}</h1>
-        </div>
+    <main style={{ padding: 40, maxWidth: 980, margin: "0 auto", fontFamily: "system-ui, sans-serif", color: C.text }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+        <h1 style={{ margin: 0 }}>{snap.visionLabel}</h1>
 
-        <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
-          <a
-            href="/"
-            style={{ fontSize: 14, color: C.link, textDecoration: 'underline' }}
-          >
-            Accueil
-          </a>
-
+        <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
+          <a href="/" style={{ fontSize: 14, color: C.link, textDecoration: "underline" }}>Accueil</a>
           <a
             href="#"
-            onClick={(e) => {
-              e.preventDefault();
-              goBack();
-            }}
-            style={{ fontSize: 14, color: C.link, textDecoration: 'underline' }}
+            onClick={(e) => { e.preventDefault(); goBack(); }}
+            style={{ fontSize: 14, color: C.link, textDecoration: "underline" }}
           >
             Revenir
           </a>
         </div>
       </div>
 
+      {showModeBar && <ReadingModeBar />}
+
+      {/* STEP 0 */}
       {step === 0 && (
         <Card title="Définition de la vision (langage courant)">
-         <HelpPanel title={helpTitle()}>
-  {helpContent()}
-</HelpPanel>
+          <HelpPanel title={helpTitle()}>
+            <p style={{ marginTop: 0 }}>
+              Les visions se distinguent par <b>l’ordre</b> dans lequel on fixe les éléments (objectif tôt ou tard).
+            </p>
+            <p style={{ marginBottom: 0 }}>
+              <b>Note :</b> l’étape <b>R1</b> est un point de départ <b>identique</b> quelle que soit la vision.
+            </p>
+          </HelpPanel>
 
-          <p style={{ marginTop: 0, color: C.secondary }}>
-            Vision en cours : <b>{snap.visionLabel}</b>
-          </p>
+          <ContinueBar onContinue={onContinue} />
 
-          <ContinueBar onContinue={onContinue} disabled={!canContinue} />
-
-
-          <div
-            style={{
-              padding: 12,
-              border: `1px solid ${C.softBorder}`,
-              borderRadius: 12,
-              color: C.text,
-            }}
-          >
+          <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12 }}>
             <div style={{ marginBottom: 8 }}>
               <b>Définition courte :</b> {snap.defShortVision}
             </div>
@@ -756,548 +421,212 @@ function helpContent() {
             </div>
           </div>
 
+          <ContinueBar onContinue={onContinue} />
+        </Card>
+      )}
+
+      {/* STEP 1 */}
+      {step === 1 && (
+        <Card title="R1 — Mécanique du stock (paramètres libres)">
+          <HelpPanel title={helpTitle()}>
+            <p style={{ marginTop: 0 }}>
+              R1 est un <b>point de départ commun</b> à toutes les visions : les paramètres sont <b>libres</b>.
+            </p>
+            <p style={{ marginBottom: 0 }}>
+              Vous pouvez faire varier : stock de départ, encaissements, décaissements.
+            </p>
+          </HelpPanel>
+
+          <ContinueBar onContinue={onContinue} />
+
+          <div style={{ marginTop: 12, color: C.secondary, fontSize: 14 }}>
+            En bref : à chaque période, la trésorerie change selon (encaissements − décaissements).
+          </div>
+
+          <DetailsOnly>
+            <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12 }}>
+              <b>Équation générale</b>
+              <div style={{ marginTop: 6 }}>
+                <b>trésorerie fin</b> = <b>trésorerie début</b> + <b>encaissements</b> − <b>décaissements</b>
+              </div>
+            </div>
+          </DetailsOnly>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
+            <div>
+              <InputRow label="Nom du stock" value={snap.stockLabel} disabled={LOCK_STRUCTURE} onChange={() => {}} />
+              <InputRow label="Unité" value={snap.unit} disabled={LOCK_STRUCTURE} onChange={() => {}} />
+              <InputRow label="Horizon (nombre de périodes)" value={snap.horizon} disabled={true} onChange={() => {}} />
+              <InputRow label="Nom du flux d’entrée" value={snap.flowInLabel} disabled={LOCK_STRUCTURE} onChange={() => {}} />
+              <InputRow label="Nom du flux de sortie" value={snap.flowOutLabel} disabled={LOCK_STRUCTURE} onChange={() => {}} />
+            </div>
+
+            <div>
+              <InputRow label="Stock de départ (paramètre libre)" value={stockDraft} disabled={false} onChange={onChangeStock} />
+              <InputRow label="Encaissements (par période) — paramètre libre" value={inDraft} disabled={false} onChange={onChangeIn} />
+              <InputRow label="Décaissements (par période) — paramètre libre" value={outDraft} disabled={false} onChange={onChangeOut} />
+            </div>
+          </div>
+
+          <TableAlwaysVisible rows={tableFree.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
 
           <ContinueBar onContinue={onContinue} />
         </Card>
       )}
 
-      {step === 1 && (
-        <Card title="R1 — Trésorerie : encaissements et décaissements fixes">
-<HelpPanel title={helpTitle()}>
-  {helpContent()}
-</HelpPanel>
-
-
-          <p style={{ marginTop: 0, color: C.secondary, fontSize: 14 }}>
-            Objectif de la page : faire comprendre comment la trésorerie varie en fonction des encaissements et décaissements fixes sur toute la période.
-          </p>
-
-          <ContinueBar onContinue={onContinue} disabled={!canContinue} />
-
-
-          <div
-            style={{
-              padding: 12,
-              border: `1px solid ${C.softBorder}`,
-              borderRadius: 12,
-              color: C.text,
-              marginBottom: 8,
-            }}
-          >
-            <div>
-              <b>Équation de base :</b> stock fin = stock début + flux d’entrée − flux de sortie
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: 18,
-              marginTop: 8,
-            }}
-          >
-            <div>
-              <InputRow
-                label="Nom du stock"
-                value={snap.stockLabel}
-                disabled={lockNames}
-                onChange={(v) => persist({ ...snap, stockLabel: v })} />
-              <InputRow
-                label="Unité"
-                value={snap.unit}
-                disabled={lockNames}
-                onChange={(v) => persist({ ...snap, unit: v })} />
-              <InputRow
-                label="Horizon (nombre de périodes)"
-                value={snap.horizon}
-                onChange={(v) => {
-                  if (v.trim() === '') return;
-                  const n = toNumber(v);
-                  if (!Number.isFinite(n)) return;
-                  const horizon = clampInt(n, 1, 100000);
-                  const clampedFrom = clampInt(snap.addFromPeriod, 1, horizon);
-                  persist({ ...snap, horizon, addFromPeriod: clampedFrom });
-                  setAddFromPeriodDraft(String(clampedFrom));
-                }} />
-            </div>
-
-            <div>
-              <InputRow
-                label="Nom du flux d’entrée"
-                value={snap.flowInLabel}
-                disabled={lockNames}
-                onChange={(v) => persist({ ...snap, flowInLabel: v })} />
-              <InputRow
-                label="Nom du flux de sortie"
-                value={snap.flowOutLabel}
-                disabled={lockNames}
-                onChange={(v) => persist({ ...snap, flowOutLabel: v })} />
-
-              <InputRow
-                label="Stock initial"
-                value={snap.initialStock}
-                onChange={(v) => {
-                  if (v.trim() === '') return;
-                  const n = toNumber(v);
-                  if (!Number.isFinite(n)) return;
-                  persist({ ...snap, initialStock: n });
-                }} />
-              <InputRow
-                label={`${snap.flowInLabel} (par période)`}
-                value={snap.r1_inflow}
-                onChange={(v) => {
-                  if (v.trim() === '') return;
-                  const n = toNumber(v);
-                  if (!Number.isFinite(n)) return;
-                  persist({ ...snap, r1_inflow: n });
-                }} />
-              <InputRow
-                label={`${snap.flowOutLabel} (par période)`}
-                value={snap.r1_outflow}
-                onChange={(v) => {
-                  if (v.trim() === '') return;
-                  const n = toNumber(v);
-                  if (!Number.isFinite(n)) return;
-                  persist({ ...snap, r1_outflow: n });
-                }} />
-            </div>
-          </div>
-
-          <TableAlwaysVisible
-            rows={tableR1R2.rows}
-            stockLabel={snap.stockLabel}
-            flowInLabel={snap.flowInLabel}
-            flowOutLabel={snap.flowOutLabel} />
-
-          <ContinueBar
-            onContinue={onContinue}
-            disabled={!canContinue} />
-        </Card>
-      )}
-
+      {/* STEP 2 */}
       {step === 2 && (
         <Card
           title={
-            snap.mode === 'preset' && snap.visionIndex === 2
-              ? 'R2 — Décomposition des flux (sans objectif)'
-              : 'R2 — Objectif minimal'
+            snap.visionIndex === 2
+              ? "R2 — Fixer les paramètres (valeurs fixées), sans objectif"
+              : "R2 — Ajout de l’objectif (paramètres libres)"
           }
         >
-<HelpPanel title={helpTitle()}>
-  {helpContent()}
-</HelpPanel>
+          <HelpPanel title={helpTitle()}>
+            {snap.visionIndex === 2 ? (
+              <>
+                <p style={{ marginTop: 0 }}>
+                  Dans cette vision, on commence par <b>fixer la réalité</b> (stock de départ, encaissements, décaissements).
+                </p>
+                <p style={{ marginBottom: 0 }}>
+                  À ce stade, <b>aucun objectif</b> n’est introduit.
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ marginTop: 0 }}>
+                  Ici on ajoute l’<b>objectif</b>. Les paramètres restent <b>libres</b> : on peut tester différents scénarios.
+                </p>
+                <p style={{ marginBottom: 0 }}>
+                  (Dans la Vision 2, R2 est identique à R2 de la Vision 1.)
+                </p>
+              </>
+            )}
+          </HelpPanel>
 
+          <ContinueBar onContinue={onContinue} />
 
-          <ContinueBar onContinue={onContinue} disabled={!canContinue} />
-
-          {snap.mode === 'preset' && snap.visionIndex === 2 ? (
+          {snap.visionIndex === 2 ? (
             <>
-              <p style={{ marginTop: 0, color: C.secondary, fontSize: 14 }}>
-                Ici, R2 sert d’abord à détailler la structure (salaire + activité). L’objectif minimal
-                sera introduit en R3 : c’est une descente différente de la Vision 2.
-              </p>
-
-              <div
-                style={{
-                  padding: 12,
-                  border: `1px solid ${C.softBorder}`,
-                  borderRadius: 12,
-                  color: C.text,
-                  lineHeight: 1.6,
-                }}
-              >
-                <b>Équations (structure)</b>
-                <div>
-                  {snap.flowInLabel} = salaire + {snap.addInflowLabel} (à partir de la période{' '}
-                  {snap.addFromPeriod})
-                </div>
-                <div>
-                  {snap.flowOutLabel} = dépenses personnelles + {snap.addOutflowLabel} (à partir de
-                  la période {snap.addFromPeriod})
-                </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
+                <InputRow label="Stock de départ (valeur fixée)" value={snap.fixedInitialStock} disabled={true} onChange={() => {}} />
+                <InputRow label="Encaissements (valeur fixée)" value={snap.fixedInflow} disabled={true} onChange={() => {}} />
+                <InputRow label="Décaissements (valeur fixée)" value={snap.fixedOutflow} disabled={true} onChange={() => {}} />
               </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 18,
-                  marginTop: 8,
-                }}
-              >
-                <div>
-                  <InputRow
-                    label="Salaire (par période)"
-                    value={snap.salary}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, salary: n });
-                    }} />
-                  <InputRow
-                    label="Dépenses personnelles (par période)"
-                    value={snap.personalExpenses}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, personalExpenses: n });
-                    }} />
+              <DetailsOnly>
+                <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12, lineHeight: 1.6 }}>
+                  <b>Valorisation des paramètres fixés (R2)</b>
+                  <div>encaissements = {snap.fixedInflowMeaning} (valeur fixée)</div>
+                  <div>décaissements = {snap.fixedOutflowMeaning} (valeur fixée)</div>
                 </div>
+              </DetailsOnly>
 
-                <div>
-                  <InputRow
-                    label={`À partir de la période (1..${snap.horizon})`}
-                    value={addFromPeriodDraft}
-                    onChange={(v) => {
-                      setAddFromPeriodDraft(v);
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      const p = clampInt(n, 1, snap.horizon);
-                      persist({ ...snap, addFromPeriod: p });
-                    }}
-                    placeholder="Ex. 4" />
-                  <InputRow
-                    label={`${snap.addInflowLabel} (par période)`}
-                    value={snap.addInflow}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, addInflow: n });
-                    }} />
-                  <InputRow
-                    label={`${snap.addOutflowLabel} (par période)`}
-                    value={snap.addOutflow}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, addOutflow: n });
-                    }} />
-                </div>
+              <div style={{ marginTop: 12, padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12 }}>
+                Stock final (R2) : <b>{fmt(tableFixed.stockFinal)}</b> {snap.unit}
               </div>
 
-              <TableAlwaysVisible
-                rows={tableR3.rows}
-                stockLabel={snap.stockLabel}
-                flowInLabel={snap.flowInLabel}
-                flowOutLabel={snap.flowOutLabel} />
-
-              <ContinueBar
-                onContinue={onContinue}
-                disabled={!canContinue} />
+              <TableAlwaysVisible rows={tableFixed.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
             </>
           ) : (
             <>
-              <p style={{ marginTop: 0, color: C.secondary, fontSize: 14 }}>
-                R2 introduit l’objectif minimal : on voit rapidement si la vision atteint (ou non) l’objectif.
-              </p>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 18,
-                }}
-              >
-                <div>
-                  <InputRow
-                    label="Stock initial (modifiable)"
-                    value={snap.initialStock}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, initialStock: n });
-                    }} />
-                  <InputRow
-                    label={`${snap.flowInLabel} (modifiable)`}
-                    value={snap.r1_inflow}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, r1_inflow: n });
-                    }} />
-                </div>
-                <div>
-                  <InputRow
-                    label={`${snap.flowOutLabel} (modifiable)`}
-                    value={snap.r1_outflow}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, r1_outflow: n });
-                    }} />
-                  <InputRow
-                    label={`Objectif minimal (en ${snap.unit})`}
-                    value={snap.target}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, target: n });
-                    }} />
-                </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
+                <InputRow label="Objectif minimal (valeur fixée)" value={snap.target} disabled={true} onChange={() => {}} />
+                <div />
               </div>
 
-              <div
-                style={{
-                  marginTop: 12,
-                  padding: 12,
-                  border: `1px solid ${C.softBorder}`,
-                  borderRadius: 12,
-                }}
-              >
-                Stock final (R1/R2) : <b>{fmt(tableR1R2.stockFinal)}</b> {snap.unit} —{' '}
-                <b style={{ color: atteintR1R2 ? C.ok : C.bad }}>
-                  {atteintR1R2 ? 'objectif atteint' : 'objectif non atteint'}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
+                <InputRow label="Stock de départ (paramètre libre)" value={stockDraft} disabled={false} onChange={onChangeStock} />
+                <InputRow label="Encaissements (par période) — paramètre libre" value={inDraft} disabled={false} onChange={onChangeIn} />
+                <InputRow label="Décaissements (par période) — paramètre libre" value={outDraft} disabled={false} onChange={onChangeOut} />
+              </div>
+
+              <div style={{ marginTop: 12, padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12 }}>
+                Stock final (R2) : <b>{fmt(tableFree.stockFinal)}</b> {snap.unit} —{" "}
+                <b style={{ color: atteintR2_V1V2 ? C.ok : C.bad }}>
+                  {atteintR2_V1V2 ? "objectif atteint" : "objectif non atteint"}
                 </b>
               </div>
 
-              <TableAlwaysVisible
-                rows={tableR1R2.rows}
-                stockLabel={snap.stockLabel}
-                flowInLabel={snap.flowInLabel}
-                flowOutLabel={snap.flowOutLabel} />
+              <DetailsOnly>
+                <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12 }}>
+                  <b>Équation (rappel)</b>
+                  <div style={{ marginTop: 6 }}>
+                    <b>trésorerie fin</b> = <b>trésorerie début</b> + <b>encaissements</b> − <b>décaissements</b>
+                  </div>
+                </div>
+              </DetailsOnly>
 
-              <ContinueBar
-                onContinue={onContinue}
-                disabled={!canContinue} />
+              <TableAlwaysVisible rows={tableFree.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
             </>
           )}
+
+          <ContinueBar onContinue={onContinue} />
         </Card>
       )}
 
+      {/* STEP 3 */}
       {step === 3 && (
-        <Card title="R3 — Interprétation (équations)">
+        <Card title={snap.visionIndex === 2 ? "R3 — Ajouter l’objectif (valeur fixée) et conclure" : "R3 — Préciser les paramètres (valeurs fixées)"}>
+          <HelpPanel title={helpTitle()}>
+            {snap.visionIndex === 2 ? (
+              <>
+                <p style={{ marginTop: 0 }}>
+                  Ici, on introduit l’<b>objectif</b> (valeur fixée) après avoir fixé la réalité.
+                </p>
+                <p style={{ marginBottom: 0 }}>
+                  On conclut ensuite : objectif atteint / non atteint.
+                </p>
+              </>
+            ) : (
+              <>
+                <p style={{ marginTop: 0 }}>
+                  R3 : les paramètres prennent des <b>valeurs fixées</b> (cas présenté). On conclut sur un cas précis.
+                </p>
+                <p style={{ marginBottom: 0 }}>
+                  L’objectif a déjà été introduit en R2.
+                </p>
+              </>
+            )}
+          </HelpPanel>
 
-<HelpPanel title={helpTitle()}>
-  {helpContent()}
-</HelpPanel>
+          <ContinueBar onContinue={onContinue} />
 
-          <p style={{ marginTop: 0, color: C.secondary, fontSize: 14 }}>
-            {snap.mode === 'preset' && snap.visionIndex === 2
-              ? "Ici, l’objectif minimal arrive après la décomposition des flux : on confronte maintenant la structure détaillée à l’objectif."
-              : "R3 explicite les équations (interprétation des flux). Vous pouvez encore ajuster l’objectif minimal."}
-          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
+            <InputRow label="Stock de départ (valeur fixée)" value={snap.fixedInitialStock} disabled={true} onChange={() => {}} />
+            <InputRow label="Encaissements (valeur fixée)" value={snap.fixedInflow} disabled={true} onChange={() => {}} />
+            <InputRow label="Décaissements (valeur fixée)" value={snap.fixedOutflow} disabled={true} onChange={() => {}} />
+            <InputRow label="Objectif minimal (valeur fixée)" value={snap.target} disabled={true} onChange={() => {}} />
+          </div>
 
-          {snap.mode === "preset" && snap.visionIndex === 2 ? (
-  <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end" }}>
-    <button
-      onClick={() => (window.location.href = "/")}
-      style={{
-        padding: "10px 16px",
-        borderRadius: 10,
-        border: "1px solid #ccc",
-        background: "white",
-        cursor: "pointer",
-        fontSize: 16,
-      }}
-    >
-      Retour à l’accueil
-    </button>
-  </div>
-) : (
-  <ContinueBar onContinue={onContinue} disabled={!canContinue} />
-)}
+          <DetailsOnly>
+            <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12, lineHeight: 1.6 }}>
+              <b>Valorisation des paramètres fixés</b>
+              <div>encaissements = {snap.fixedInflowMeaning} (valeur fixée)</div>
+              <div>décaissements = {snap.fixedOutflowMeaning} (valeur fixée)</div>
+            </div>
+          </DetailsOnly>
 
-
-
-          <InputRow
-            label={`Objectif minimal (en ${snap.unit}) — modifiable`}
-            value={snap.target}
-            onChange={(v) => {
-              if (v.trim() === '') return;
-              const n = toNumber(v);
-              if (!Number.isFinite(n)) return;
-              persist({ ...snap, target: n });
-            }} />
-
-          {snap.mode === 'preset' && snap.visionIndex === 0 ? (
-            <>
-              <div
-                style={{
-                  padding: 12,
-                  border: `1px solid ${C.softBorder}`,
-                  borderRadius: 12,
-                  lineHeight: 1.6,
-                  marginTop: 8,
-                }}
-              >
-                <b>Équations (Vision 1)</b>
-                <div>
-                  {snap.flowInLabel} = salaire
-                </div>
-                <div>
-                  {snap.flowOutLabel} = dépenses personnelles
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 18,
-                  marginTop: 8,
-                }}
-              >
-                <InputRow
-                  label="Salaire (par période)"
-                  value={snap.salary}
-                  onChange={(v) => {
-                    if (v.trim() === '') return;
-                    const n = toNumber(v);
-                    if (!Number.isFinite(n)) return;
-                    persist({ ...snap, salary: n });
-                  }} />
-                <InputRow
-                  label="Dépenses personnelles (par période)"
-                  value={snap.personalExpenses}
-                  onChange={(v) => {
-                    if (v.trim() === '') return;
-                    const n = toNumber(v);
-                    if (!Number.isFinite(n)) return;
-                    persist({ ...snap, personalExpenses: n });
-                  }} />
-              </div>
-            </>
-          ) : (
-            <>
-              <div
-                style={{
-                  padding: 12,
-                  border: `1px solid ${C.softBorder}`,
-                  borderRadius: 12,
-                  lineHeight: 1.6,
-                  marginTop: 8,
-                }}
-              >
-                <b>Équations</b>
-                <div>
-                  {snap.flowInLabel} = salaire + {snap.addInflowLabel} (à partir de la période{' '}
-                  {snap.addFromPeriod})
-                </div>
-                <div>
-                  {snap.flowOutLabel} = dépenses personnelles + {snap.addOutflowLabel} (à partir de la
-                  période {snap.addFromPeriod})
-                </div>
-              </div>
-
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 18,
-                  marginTop: 8,
-                }}
-              >
-                <div>
-                  <InputRow
-                    label="Salaire (par période)"
-                    value={snap.salary}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, salary: n });
-                    }} />
-                  <InputRow
-                    label="Dépenses personnelles (par période)"
-                    value={snap.personalExpenses}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, personalExpenses: n });
-                    }} />
-                </div>
-
-                <div>
-                  <InputRow
-                    label={`À partir de la période (1..${snap.horizon})`}
-                    value={addFromPeriodDraft}
-                    onChange={(v) => {
-                      setAddFromPeriodDraft(v);
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      const p = clampInt(n, 1, snap.horizon);
-                      persist({ ...snap, addFromPeriod: p });
-                    }}
-                    placeholder="Ex. 4" />
-                  <InputRow
-                    label={`${snap.addInflowLabel} (par période)`}
-                    value={snap.addInflow}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, addInflow: n });
-                    }} />
-                  <InputRow
-                    label={`${snap.addOutflowLabel} (par période)`}
-                    value={snap.addOutflow}
-                    onChange={(v) => {
-                      if (v.trim() === '') return;
-                      const n = toNumber(v);
-                      if (!Number.isFinite(n)) return;
-                      persist({ ...snap, addOutflow: n });
-                    }} />
-                </div>
-              </div>
-            </>
-          )}
-
-          <div
-            style={{
-              marginTop: 12,
-              padding: 12,
-              border: `1px solid ${C.softBorder}`,
-              borderRadius: 12,
-            }}
-          >
-            Stock final (R3) : <b>{fmt(tableR3.stockFinal)}</b> {snap.unit} —{' '}
-            <b style={{ color: atteintR3 ? C.ok : C.bad }}>
-              {atteintR3 ? 'objectif atteint' : 'objectif non atteint'}
+          <div style={{ marginTop: 12, padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12 }}>
+            Stock final : <b>{fmt(tableFixed.stockFinal)}</b> {snap.unit} —{" "}
+            <b style={{ color: (snap.visionIndex === 2 ? atteintR3_V3 : atteintR3_V1V2) ? C.ok : C.bad }}>
+              {(snap.visionIndex === 2 ? atteintR3_V3 : atteintR3_V1V2) ? "objectif atteint" : "objectif non atteint"}
             </b>
           </div>
 
-          <TableAlwaysVisible
-            rows={tableR3.rows}
-            stockLabel={snap.stockLabel}
-            flowInLabel={snap.flowInLabel}
-            flowOutLabel={snap.flowOutLabel} />
+          <DetailsOnly>
+            <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12 }}>
+              <b>Rappel</b>
+              <div style={{ marginTop: 6 }}>
+                <b>trésorerie fin</b> = <b>trésorerie début</b> + <b>encaissements</b> − <b>décaissements</b>
+              </div>
+            </div>
+          </DetailsOnly>
 
-          {snap.mode === "preset" && snap.visionIndex === 2 ? (
-  <div style={{ marginTop: 18, display: "flex", justifyContent: "flex-end" }}>
-    <button
-      onClick={() => (window.location.href = "/")}
-      style={{
-        padding: "10px 16px",
-        borderRadius: 10,
-        border: "1px solid #ccc",
-        background: "white",
-        cursor: "pointer",
-        fontSize: 16,
-      }}
-    >
-      Retour à l’accueil
-    </button>
-  </div>
-) : (
-  <ContinueBar
-    onContinue={onContinue}
-    disabled={!canContinue}
-  />
-)}
+          <TableAlwaysVisible rows={tableFixed.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
 
-
+          <ContinueBar onContinue={onContinue} />
         </Card>
       )}
     </main>

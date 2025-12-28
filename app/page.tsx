@@ -4,36 +4,27 @@ import Link from "next/link";
 export default function HomePage() {
   return (
     <main className="mx-auto max-w-3xl px-6 py-16">
-      {/* Texte principal */}
-      <section className="space-y-5">
-        <h1 className="text-3xl font-semibold tracking-tight">
-          Un problème flou peut devenir clair — étape par étape.
-        </h1>
+      <h1 className="text-3xl font-semibold tracking-tight">
+        Décider mieux
+      </h1>
 
-        <p className="text-lg">
-          Clarifier un problème est la première condition pour décider mieux.
-        </p>
+      <p className="mt-4 text-lg">
+        Une méthode simple pour clarifier un problème et comparer des options.
+      </p>
 
-        <p className="text-base opacity-80">
-          Voyez comment un raisonnement se construit par raffinements successifs.
-        </p>
-      </section>
+      <p className="mt-3 text-base opacity-80">
+        Exemple guidé (V1.5) : un problème de trésorerie, construit étape par étape.
+      </p>
 
-      {/* Action principale */}
-      <section className="mt-10 space-y-3">
+      <div className="mt-10">
         <Link
           href="/probleme"
           className="inline-flex items-center justify-center rounded-md border px-5 py-3 text-base font-medium shadow-sm"
         >
-          ▶︎ Voir un exemple guidé
+          ▶︎ Démarrer l’exemple guidé
         </Link>
+      </div>
 
-        <p className="text-sm opacity-70">
-          Aucune inscription. Aucun engagement.
-        </p>
-      </section>
-
-      {/* Liens secondaires */}
       <footer className="mt-16 flex gap-6 text-sm opacity-70">
         <Link href="/mentions-legales" className="hover:underline">
           Mentions légales
