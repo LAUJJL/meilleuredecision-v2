@@ -13,7 +13,7 @@ export default function HomePage() {
       </p>
 
       <p className="mt-3 text-base opacity-80">
-        Exemple guidé (V1.5) : un problème de trésorerie, construit étape par étape.
+        Exemple guidé : un problème de trésorerie, construit étape par étape.
       </p>
 
       <div className="mt-10">
