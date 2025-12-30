@@ -2,7 +2,6 @@
 
 import HelpPanel from "../components/HelpPanel";
 import React, { useEffect, useMemo, useState } from "react";
-import { ReadingModeBar, DetailsOnly } from "../components/readingMode";
 
 type SnapshotV1 = {
   version: 1;
@@ -11,36 +10,43 @@ type SnapshotV1 = {
   defShortVision: string;
   defLongVision: string;
 
-  stockLabel: string;
-  unit: string;
-  horizon: number;
-  flowInLabel: string;
-  flowOutLabel: string;
+  stockLabel: string;     // "Trésorerie"
+  unit: string;           // "euros"
+  horizon: number;        // 12 (fixe)
+  flowInLabel: string;    // "Encaissements"
+  flowOutLabel: string;   // "Décaissements"
 
-  // Paramètres libres (R1 et parfois R2)
+  // Paramètre fixé (dès le départ)
   initialStock: number;
+
+  // R1/R2 : valeurs libres (exploration)
   r1_inflow: number;
   r1_outflow: number;
 
-  // Objectif (valeur fixée, introduite tôt ou tard selon la vision)
+  // Objectif (fixe pour l’exemple)
   target: number;
 
-  // Paramètres fixés (cas présenté) utilisés en R2 (Vision 3) et/ou R3
-  fixedInitialStock: number;
-  fixedInflow: number;
-  fixedOutflow: number;
+  // Paramètres fixes (réalité)
+  salary: number;
+  personalExpenses: number;
 
-  // Explication “métier” des flux (pour les détails)
-  fixedInflowMeaning: string;   // ex: "salaire mensuel"
-  fixedOutflowMeaning: string;  // ex: "dépenses personnelles"
+  // Activité (fixe par vision)
+  addInflowLabel: string;
+  addOutflowLabel: string;
+  addInflow: number;
+  addOutflow: number;
+  addFromPeriod: number;
 
-  visionIndex: 0 | 1 | 2;
+  visionIndex: 0 | 1 | 2; // 0=>Vision1, 1=>Vision2, 2=>Vision3
   visionLabel: string;
 };
+
+type ReadingMode = "simple" | "details";
 
 const C = {
   text: "#111",
   secondary: "#444",
+  hint: "#666",
   border: "#ddd",
   softBorder: "#eee",
   link: "#0b5fff",
@@ -62,18 +68,33 @@ const fmt = (n: number) => {
 function computeTable({
   initialStock,
   horizon,
-  inflow,
-  outflow,
+  baseInflow,
+  baseOutflow,
+  addFromPeriod,
+  addInflow,
+  addOutflow,
 }: {
   initialStock: number;
   horizon: number;
-  inflow: number;
-  outflow: number;
+  baseInflow: number;
+  baseOutflow: number;
+  addFromPeriod?: number;
+  addInflow?: number;
+  addOutflow?: number;
 }) {
   const rows: Array<{ t: number; stockStart: number; inflow: number; outflow: number; stockEnd: number }> = [];
   let stock = initialStock;
 
   for (let t = 1; t <= horizon; t++) {
+    const add =
+      addFromPeriod != null &&
+      addInflow != null &&
+      addOutflow != null &&
+      t >= addFromPeriod;
+
+    const inflow = baseInflow + (add ? addInflow : 0);
+    const outflow = baseOutflow + (add ? addOutflow : 0);
+
     const stockEnd = stock + (inflow - outflow);
     rows.push({ t, stockStart: stock, inflow, outflow, stockEnd });
     stock = stockEnd;
@@ -128,16 +149,7 @@ function InputRow({
   placeholder?: string;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        marginTop: 10,
-        maxWidth: 460,
-        opacity: disabled ? 0.75 : 1,
-      }}
-    >
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 10, maxWidth: 460, opacity: disabled ? 0.75 : 1 }}>
       <div style={{ fontSize: 14, color: C.text }}>{label}</div>
       <input
         value={String(value)}
@@ -196,14 +208,85 @@ function TableAlwaysVisible({
   );
 }
 
+function ReadingModeBar({
+  mode,
+  setMode,
+}: {
+  mode: ReadingMode;
+  setMode: (m: ReadingMode) => void;
+}) {
+  const btn = (active: boolean): React.CSSProperties => ({
+    padding: "8px 10px",
+    borderRadius: 10,
+    border: `1px solid ${C.border}`,
+    background: active ? "#f3f4f6" : "white",
+    cursor: "pointer",
+    fontSize: 14,
+    color: C.text,
+  });
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        gap: 12,
+        padding: 10,
+        border: `1px solid ${C.softBorder}`,
+        borderRadius: 12,
+      }}
+    >
+      <div style={{ fontSize: 14, color: C.secondary, lineHeight: 1.4 }}>
+        <b>Mode</b> :{" "}
+        {mode === "simple"
+          ? "Simple (sans équations)"
+          : "Détails (avec équations)"}{" "}
+        — vous pouvez changer à tout moment.
+      </div>
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <button style={btn(mode === "simple")} onClick={() => setMode("simple")}>
+          Simple
+        </button>
+        <button style={btn(mode === "details")} onClick={() => setMode("details")}>
+          Détails
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DetailsOnly({ mode, children }: { mode: ReadingMode; children: React.ReactNode }) {
+  if (mode !== "details") return null;
+  return <>{children}</>;
+}
+
+function BaseEquation({ mode }: { mode: ReadingMode }) {
+  return (
+    <DetailsOnly mode={mode}>
+      <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12 }}>
+        <b>Équation de base (toujours valable)</b>
+        <div style={{ marginTop: 6 }}>
+          <b>trésorerie fin</b> = <b>trésorerie début</b> + <b>encaissements</b> − <b>décaissements</b>
+        </div>
+      </div>
+    </DetailsOnly>
+  );
+}
+
+// Paramètre FIXE du problème
+const TRESORERIE_DEPART_FIXE = 3000;
+
 function defaultSnapshot(): SnapshotV1 {
   return {
     version: 1,
     savedAtIso: new Date().toISOString(),
 
-    defShortVision: "Je reste salarié.",
+    defShortVision: "Je reste salarié avec un revenu stable et des dépenses maîtrisées.",
     defLongVision:
-      "Je reste salarié avec un salaire et des dépenses personnelles. L’objectif est d’évaluer si cette situation permet d’atteindre un objectif de trésorerie dans un horizon donné.",
+      "Dans cette vision, je garde mon activité salariée avec un salaire de 3000 € et des dépenses mensuelles de 2500 €. Je veux vérifier si cette situation permet d’atteindre un objectif minimal de trésorerie (10 000 €) dans 12 mois.",
 
     stockLabel: "Trésorerie",
     unit: "euros",
@@ -211,42 +294,56 @@ function defaultSnapshot(): SnapshotV1 {
     flowInLabel: "Encaissements",
     flowOutLabel: "Décaissements",
 
-    initialStock: 3000,
+    initialStock: TRESORERIE_DEPART_FIXE,
+
     r1_inflow: 3000,
     r1_outflow: 2500,
 
     target: 10000,
 
-    // Paramètres fixés (cas présenté)
-    fixedInitialStock: 3000,
-    fixedInflow: 3000,
-    fixedOutflow: 2500,
-    fixedInflowMeaning: "salaire mensuel",
-    fixedOutflowMeaning: "dépenses personnelles",
+    salary: 3000,
+    personalExpenses: 2500,
+
+    addInflowLabel: "Revenu d'activité",
+    addOutflowLabel: "Dépenses d'activité",
+    addInflow: 0,
+    addOutflow: 0,
+    addFromPeriod: 1,
 
     visionIndex: 0,
     visionLabel: "Vision 1 — Rester salarié",
   };
 }
 
+// Met à jour l’URL pour rester cohérent avec la vision affichée
+function setVisionInUrl(visionIndex: 0 | 1 | 2) {
+  const q = visionIndex === 0 ? "1" : visionIndex === 1 ? "2" : "3";
+  const url = new URL(window.location.href);
+  url.searchParams.set("vision", q);
+  window.history.replaceState({}, "", url.toString());
+}
+
 export default function ParcoursPage() {
-  const [step, setStep] = useState(0); // 0 Vision, 1 R1, 2 R2, 3 R3
+  const [step, setStep] = useState(0); // 0 vision, 1 R1, 2 R2, 3 R3
   const [snap, setSnap] = useState<SnapshotV1>(() => defaultSnapshot());
 
-  // Drafts pour permettre effacement / saisie libre
-  const [stockDraft, setStockDraft] = useState("3000");
+  const [readingMode, setReadingMode] = useState<ReadingMode>("simple");
+
+  // Drafts R1 (pour pouvoir effacer/retaper) — uniquement flux libres
   const [inDraft, setInDraft] = useState("3000");
   const [outDraft, setOutDraft] = useState("2500");
 
   const LOCK_STRUCTURE = true;
 
   function syncDraftsFrom(s: SnapshotV1) {
-    setStockDraft(String(s.initialStock));
     setInDraft(String(s.r1_inflow));
     setOutDraft(String(s.r1_outflow));
   }
 
   function applyVision(idx: 0 | 1 | 2) {
+    // ✅ important : garder l’URL cohérente avec l’état
+    setVisionInUrl(idx);
+
     if (idx === 0) {
       const v: SnapshotV1 = {
         ...defaultSnapshot(),
@@ -254,7 +351,10 @@ export default function ParcoursPage() {
         visionLabel: "Vision 1 — Rester salarié",
         defShortVision: "Je reste salarié.",
         defLongVision:
-          "Je reste salarié avec un salaire et des dépenses personnelles. L’objectif est d’évaluer si cette situation permet d’atteindre un objectif de trésorerie dans un horizon donné.",
+          "Je garde mon salaire et mes dépenses personnelles. Je vérifie si l’objectif minimal est atteignable.",
+        addInflow: 0,
+        addOutflow: 0,
+        addFromPeriod: 1,
       };
       setSnap(v);
       syncDraftsFrom(v);
@@ -266,10 +366,13 @@ export default function ParcoursPage() {
       const v: SnapshotV1 = {
         ...defaultSnapshot(),
         visionIndex: 1,
-        visionLabel: "Vision 2 — Objectif introduit tôt",
-        defShortVision: "Objectif introduit tôt.",
+        visionLabel: "Vision 2 — Micro-activité (objectif tôt)",
+        defShortVision: "Je reste salarié et j’ajoute une micro-activité.",
         defLongVision:
-          "On introduit l’objectif dès R2 : on obtient tôt un diagnostic (objectif atteint / non atteint), puis on précise ensuite les paramètres (R3).",
+          "J’introduis tôt l’objectif minimal, puis je fixe les paramètres de l’exemple (salaire, dépenses, activité).",
+        addInflow: 1000,
+        addOutflow: 500,
+        addFromPeriod: 1,
       };
       setSnap(v);
       syncDraftsFrom(v);
@@ -280,10 +383,13 @@ export default function ParcoursPage() {
     const v: SnapshotV1 = {
       ...defaultSnapshot(),
       visionIndex: 2,
-      visionLabel: "Vision 3 — Objectif introduit tard",
-      defShortVision: "Objectif introduit tard.",
+      visionLabel: "Vision 3 — Micro-activité (objectif tard)",
+      defShortVision: "Je regarde d’abord la réalité, puis je compare à l’objectif.",
       defLongVision:
-        "On commence par fixer la réalité (stock de départ, encaissements, décaissements) sans parler d’objectif. L’objectif n’est introduit qu’en R3 : on juge ensuite si la réalité permet de l’atteindre.",
+        "Je fixe d’abord les paramètres de l’exemple (réalité), puis j’introduis l’objectif minimal seulement après.",
+      addInflow: 1000,
+      addOutflow: 500,
+      addFromPeriod: 1,
     };
     setSnap(v);
     syncDraftsFrom(v);
@@ -307,33 +413,49 @@ export default function ParcoursPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Tables
-  const tableFree = useMemo(
+  const tableR1R2 = useMemo(
     () =>
       computeTable({
         initialStock: snap.initialStock,
         horizon: snap.horizon,
-        inflow: snap.r1_inflow,
-        outflow: snap.r1_outflow,
+        baseInflow: snap.r1_inflow,
+        baseOutflow: snap.r1_outflow,
       }),
     [snap.initialStock, snap.horizon, snap.r1_inflow, snap.r1_outflow]
   );
 
-  const tableFixed = useMemo(
-    () =>
-      computeTable({
-        initialStock: snap.fixedInitialStock,
+  const tableR3 = useMemo(() => {
+    if (snap.visionIndex === 0) {
+      return computeTable({
+        initialStock: snap.initialStock,
         horizon: snap.horizon,
-        inflow: snap.fixedInflow,
-        outflow: snap.fixedOutflow,
-      }),
-    [snap.fixedInitialStock, snap.horizon, snap.fixedInflow, snap.fixedOutflow]
-  );
+        baseInflow: snap.salary,
+        baseOutflow: snap.personalExpenses,
+      });
+    }
 
-  // Diagnostics
-  const atteintR2_V1V2 = tableFree.stockFinal - snap.target >= 0;
-  const atteintR3_V1V2 = tableFixed.stockFinal - snap.target >= 0;
-  const atteintR3_V3 = tableFixed.stockFinal - snap.target >= 0;
+    return computeTable({
+      initialStock: snap.initialStock,
+      horizon: snap.horizon,
+      baseInflow: snap.salary,
+      baseOutflow: snap.personalExpenses,
+      addFromPeriod: snap.addFromPeriod,
+      addInflow: snap.addInflow,
+      addOutflow: snap.addOutflow,
+    });
+  }, [
+    snap.visionIndex,
+    snap.initialStock,
+    snap.horizon,
+    snap.salary,
+    snap.personalExpenses,
+    snap.addFromPeriod,
+    snap.addInflow,
+    snap.addOutflow,
+  ]);
+
+  const atteintR2 = tableR1R2.stockFinal - snap.target >= 0;
+  const atteintR3 = tableR3.stockFinal - snap.target >= 0;
 
   function goBack() {
     if (step === 0) {
@@ -355,12 +477,6 @@ export default function ParcoursPage() {
     setStep((s) => Math.min(3, s + 1));
   }
 
-  // Handlers paramètres libres
-  function onChangeStock(v: string) {
-    setStockDraft(v);
-    const n = toNumber(v);
-    if (Number.isFinite(n)) setSnap((p) => ({ ...p, initialStock: n }));
-  }
   function onChangeIn(v: string) {
     setInDraft(v);
     const n = toNumber(v);
@@ -376,6 +492,9 @@ export default function ParcoursPage() {
     const s = step === 0 ? "Vision" : step === 1 ? "R1" : step === 2 ? "R2" : "R3";
     return `Aide — ${snap.visionLabel} — ${s}`;
   }
+
+  const showObjectiveInR2 = snap.visionIndex !== 2; // Vision 3 : objectif tard
+  const showObjectiveInR3 = true;
 
   const showModeBar = step === 1 || step === 2 || step === 3;
 
@@ -396,17 +515,16 @@ export default function ParcoursPage() {
         </div>
       </div>
 
-      {showModeBar && <ReadingModeBar />}
+      {showModeBar && <ReadingModeBar mode={readingMode} setMode={setReadingMode} />}
 
-      {/* STEP 0 */}
       {step === 0 && (
         <Card title="Définition de la vision (langage courant)">
           <HelpPanel title={helpTitle()}>
             <p style={{ marginTop: 0 }}>
-              Les visions se distinguent par <b>l’ordre</b> dans lequel on fixe les éléments (objectif tôt ou tard).
+              Une vision décrit une façon d’aborder le problème. Ensuite, les raffinements rendent le raisonnement explicite.
             </p>
             <p style={{ marginBottom: 0 }}>
-              <b>Note :</b> l’étape <b>R1</b> est un point de départ <b>identique</b> quelle que soit la vision.
+              Cliquez sur <b>Continuer</b> pour passer à R1.
             </p>
           </HelpPanel>
 
@@ -425,32 +543,21 @@ export default function ParcoursPage() {
         </Card>
       )}
 
-      {/* STEP 1 */}
       {step === 1 && (
-        <Card title="R1 — Mécanique du stock (paramètres libres)">
+        <Card title="R1 — Mécanique du stock (valeurs libres)">
           <HelpPanel title={helpTitle()}>
             <p style={{ marginTop: 0 }}>
-              R1 est un <b>point de départ commun</b> à toutes les visions : les paramètres sont <b>libres</b>.
+              R1 sert à comprendre la mécanique : un stock évolue sous l’effet de deux flux.
             </p>
             <p style={{ marginBottom: 0 }}>
-              Vous pouvez faire varier : stock de départ, encaissements, décaissements.
+              Ici, on laisse libres <b>encaissements</b> et <b>décaissements</b> pour voir l’effet sur la trésorerie.
             </p>
           </HelpPanel>
 
           <ContinueBar onContinue={onContinue} />
 
-          <div style={{ marginTop: 12, color: C.secondary, fontSize: 14 }}>
-            En bref : à chaque période, la trésorerie change selon (encaissements − décaissements).
-          </div>
-
-          <DetailsOnly>
-            <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12 }}>
-              <b>Équation générale</b>
-              <div style={{ marginTop: 6 }}>
-                <b>trésorerie fin</b> = <b>trésorerie début</b> + <b>encaissements</b> − <b>décaissements</b>
-              </div>
-            </div>
-          </DetailsOnly>
+          {/* ✅ Toujours l’équation de base en mode Détails */}
+          <BaseEquation mode={readingMode} />
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
             <div>
@@ -462,44 +569,37 @@ export default function ParcoursPage() {
             </div>
 
             <div>
-              <InputRow label="Stock de départ (paramètre libre)" value={stockDraft} disabled={false} onChange={onChangeStock} />
-              <InputRow label="Encaissements (par période) — paramètre libre" value={inDraft} disabled={false} onChange={onChangeIn} />
-              <InputRow label="Décaissements (par période) — paramètre libre" value={outDraft} disabled={false} onChange={onChangeOut} />
+              <InputRow label="Trésorerie au départ (fixée)" value={snap.initialStock} disabled={true} onChange={() => {}} />
+              <InputRow label="Encaissements (par période) — libre" value={inDraft} disabled={false} onChange={onChangeIn} placeholder="ex. 3000" />
+              <InputRow label="Décaissements (par période) — libre" value={outDraft} disabled={false} onChange={onChangeOut} placeholder="ex. 2500" />
             </div>
           </div>
 
-          <TableAlwaysVisible rows={tableFree.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
+          <TableAlwaysVisible rows={tableR1R2.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
 
           <ContinueBar onContinue={onContinue} />
         </Card>
       )}
 
-      {/* STEP 2 */}
       {step === 2 && (
-        <Card
-          title={
-            snap.visionIndex === 2
-              ? "R2 — Fixer les paramètres (valeurs fixées), sans objectif"
-              : "R2 — Ajout de l’objectif (paramètres libres)"
-          }
-        >
+        <Card title={snap.visionIndex === 2 ? "R2 — Réalité (paramètres fixés, sans objectif)" : "R2 — Objectif minimal (paramètres encore libres)"}>
           <HelpPanel title={helpTitle()}>
             {snap.visionIndex === 2 ? (
               <>
                 <p style={{ marginTop: 0 }}>
-                  Dans cette vision, on commence par <b>fixer la réalité</b> (stock de départ, encaissements, décaissements).
+                  Vision 3 : on fixe d’abord la réalité (paramètres), puis on introduit l’objectif seulement après.
                 </p>
                 <p style={{ marginBottom: 0 }}>
-                  À ce stade, <b>aucun objectif</b> n’est introduit.
+                  Ici, <b>pas d’objectif</b> : on prépare la comparaison.
                 </p>
               </>
             ) : (
               <>
                 <p style={{ marginTop: 0 }}>
-                  Ici on ajoute l’<b>objectif</b>. Les paramètres restent <b>libres</b> : on peut tester différents scénarios.
+                  On introduit l’objectif minimal : c’est une boussole qui resserre l’étude.
                 </p>
                 <p style={{ marginBottom: 0 }}>
-                  (Dans la Vision 2, R2 est identique à R2 de la Vision 1.)
+                  Les flux restent libres ici : on peut déjà voir quelles combinaisons atteignent l’objectif.
                 </p>
               </>
             )}
@@ -507,58 +607,73 @@ export default function ParcoursPage() {
 
           <ContinueBar onContinue={onContinue} />
 
-          {snap.visionIndex === 2 ? (
+          {/* ✅ Toujours l’équation de base en mode Détails */}
+          <BaseEquation mode={readingMode} />
+
+          {showObjectiveInR2 && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
-                <InputRow label="Stock de départ (valeur fixée)" value={snap.fixedInitialStock} disabled={true} onChange={() => {}} />
-                <InputRow label="Encaissements (valeur fixée)" value={snap.fixedInflow} disabled={true} onChange={() => {}} />
-                <InputRow label="Décaissements (valeur fixée)" value={snap.fixedOutflow} disabled={true} onChange={() => {}} />
-              </div>
+  <InputRow
+    label="Trésorerie au départ (fixée)"
+    value={snap.initialStock}
+    disabled={true}
+    onChange={() => {}}
+  />
+  <InputRow
+    label="Objectif minimal (fixe)"
+    value={snap.target}
+    disabled={true}
+    onChange={() => {}}
+  />
 
-              <DetailsOnly>
-                <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12, lineHeight: 1.6 }}>
-                  <b>Valorisation des paramètres fixés (R2)</b>
-                  <div>encaissements = {snap.fixedInflowMeaning} (valeur fixée)</div>
-                  <div>décaissements = {snap.fixedOutflowMeaning} (valeur fixée)</div>
-                </div>
-              </DetailsOnly>
+  {/* ✅ R2 : les flux restent libres (Vision 1 et Vision 2) */}
+  <InputRow
+    label="Encaissements (par période) — libre"
+    value={inDraft}
+    disabled={false}
+    onChange={onChangeIn}
+    placeholder="ex. 3000"
+  />
+  <InputRow
+    label="Décaissements (par période) — libre"
+    value={outDraft}
+    disabled={false}
+    onChange={onChangeOut}
+    placeholder="ex. 2500"
+  />
+</div>
+
 
               <div style={{ marginTop: 12, padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12 }}>
-                Stock final (R2) : <b>{fmt(tableFixed.stockFinal)}</b> {snap.unit}
+                Stock final (R1/R2) : <b>{fmt(tableR1R2.stockFinal)}</b> {snap.unit} —{" "}
+                <b style={{ color: atteintR2 ? C.ok : C.bad }}>{atteintR2 ? "objectif atteint" : "objectif non atteint"}</b>
               </div>
 
-              <TableAlwaysVisible rows={tableFixed.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
+              <TableAlwaysVisible rows={tableR1R2.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
             </>
-          ) : (
+          )}
+
+          {snap.visionIndex === 2 && (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
-                <InputRow label="Objectif minimal (valeur fixée)" value={snap.target} disabled={true} onChange={() => {}} />
-                <div />
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
-                <InputRow label="Stock de départ (paramètre libre)" value={stockDraft} disabled={false} onChange={onChangeStock} />
-                <InputRow label="Encaissements (par période) — paramètre libre" value={inDraft} disabled={false} onChange={onChangeIn} />
-                <InputRow label="Décaissements (par période) — paramètre libre" value={outDraft} disabled={false} onChange={onChangeOut} />
-              </div>
-
-              <div style={{ marginTop: 12, padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12 }}>
-                Stock final (R2) : <b>{fmt(tableFree.stockFinal)}</b> {snap.unit} —{" "}
-                <b style={{ color: atteintR2_V1V2 ? C.ok : C.bad }}>
-                  {atteintR2_V1V2 ? "objectif atteint" : "objectif non atteint"}
-                </b>
-              </div>
-
-              <DetailsOnly>
-                <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12 }}>
-                  <b>Équation (rappel)</b>
-                  <div style={{ marginTop: 6 }}>
-                    <b>trésorerie fin</b> = <b>trésorerie début</b> + <b>encaissements</b> − <b>décaissements</b>
-                  </div>
+              <DetailsOnly mode={readingMode}>
+                <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12, lineHeight: 1.6 }}>
+                  <b>Paramètres fixés (réalité de l’exemple)</b>
+                  <div>encaissements = salaire + revenu d’activité</div>
+                  <div>décaissements = dépenses personnelles + dépenses d’activité</div>
                 </div>
               </DetailsOnly>
 
-              <TableAlwaysVisible rows={tableFree.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
+                <InputRow label="Trésorerie au départ (fixée)" value={snap.initialStock} disabled={true} onChange={() => {}} />
+                <InputRow label="Salaire mensuel (fixe)" value={snap.salary} disabled={true} onChange={() => {}} />
+                <InputRow label="Dépenses personnelles mensuelles (fixes)" value={snap.personalExpenses} disabled={true} onChange={() => {}} />
+                <InputRow label="Revenu d’activité (fixe)" value={snap.addInflow} disabled={true} onChange={() => {}} />
+                <InputRow label="Dépenses d’activité (fixes)" value={snap.addOutflow} disabled={true} onChange={() => {}} />
+              </div>
+
+              <div style={{ marginTop: 12, padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12 }}>
+                (On introduira l’objectif à l’étape suivante.)
+              </div>
             </>
           )}
 
@@ -566,65 +681,59 @@ export default function ParcoursPage() {
         </Card>
       )}
 
-      {/* STEP 3 */}
       {step === 3 && (
-        <Card title={snap.visionIndex === 2 ? "R3 — Ajouter l’objectif (valeur fixée) et conclure" : "R3 — Préciser les paramètres (valeurs fixées)"}>
+        <Card title="R3 — Paramètres fixés + comparaison à l’objectif">
           <HelpPanel title={helpTitle()}>
-            {snap.visionIndex === 2 ? (
-              <>
-                <p style={{ marginTop: 0 }}>
-                  Ici, on introduit l’<b>objectif</b> (valeur fixée) après avoir fixé la réalité.
-                </p>
-                <p style={{ marginBottom: 0 }}>
-                  On conclut ensuite : objectif atteint / non atteint.
-                </p>
-              </>
-            ) : (
-              <>
-                <p style={{ marginTop: 0 }}>
-                  R3 : les paramètres prennent des <b>valeurs fixées</b> (cas présenté). On conclut sur un cas précis.
-                </p>
-                <p style={{ marginBottom: 0 }}>
-                  L’objectif a déjà été introduit en R2.
-                </p>
-              </>
-            )}
+            <p style={{ marginTop: 0 }}>
+              Ici, on fixe les paramètres de l’exemple (réalité) et on compare à l’objectif minimal.
+            </p>
+            <p style={{ marginBottom: 0 }}>
+              L’équation de base reste la même.
+            </p>
           </HelpPanel>
 
           <ContinueBar onContinue={onContinue} />
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
-            <InputRow label="Stock de départ (valeur fixée)" value={snap.fixedInitialStock} disabled={true} onChange={() => {}} />
-            <InputRow label="Encaissements (valeur fixée)" value={snap.fixedInflow} disabled={true} onChange={() => {}} />
-            <InputRow label="Décaissements (valeur fixée)" value={snap.fixedOutflow} disabled={true} onChange={() => {}} />
-            <InputRow label="Objectif minimal (valeur fixée)" value={snap.target} disabled={true} onChange={() => {}} />
-          </div>
+          {/* ✅ Toujours l’équation de base en mode Détails */}
+          <BaseEquation mode={readingMode} />
 
-          <DetailsOnly>
+          <DetailsOnly mode={readingMode}>
             <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12, lineHeight: 1.6 }}>
-              <b>Valorisation des paramètres fixés</b>
-              <div>encaissements = {snap.fixedInflowMeaning} (valeur fixée)</div>
-              <div>décaissements = {snap.fixedOutflowMeaning} (valeur fixée)</div>
+              <b>Paramètres fixés (réalité de l’exemple)</b>
+              {snap.visionIndex === 0 ? (
+                <>
+                  <div>encaissements = salaire</div>
+                  <div>décaissements = dépenses personnelles</div>
+                </>
+              ) : (
+                <>
+                  <div>encaissements = salaire + revenu d’activité</div>
+                  <div>décaissements = dépenses personnelles + dépenses d’activité</div>
+                </>
+              )}
             </div>
           </DetailsOnly>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
+            <InputRow label="Trésorerie au départ (fixée)" value={snap.initialStock} disabled={true} onChange={() => {}} />
+            {showObjectiveInR3 && <InputRow label="Objectif minimal (fixe)" value={snap.target} disabled={true} onChange={() => {}} />}
+            <InputRow label="Salaire mensuel (fixe)" value={snap.salary} disabled={true} onChange={() => {}} />
+            <InputRow label="Dépenses personnelles mensuelles (fixes)" value={snap.personalExpenses} disabled={true} onChange={() => {}} />
+
+            {snap.visionIndex !== 0 && (
+              <>
+                <InputRow label="Revenu d’activité (fixe)" value={snap.addInflow} disabled={true} onChange={() => {}} />
+                <InputRow label="Dépenses d’activité (fixes)" value={snap.addOutflow} disabled={true} onChange={() => {}} />
+              </>
+            )}
+          </div>
 
           <div style={{ marginTop: 12, padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12 }}>
-            Stock final : <b>{fmt(tableFixed.stockFinal)}</b> {snap.unit} —{" "}
-            <b style={{ color: (snap.visionIndex === 2 ? atteintR3_V3 : atteintR3_V1V2) ? C.ok : C.bad }}>
-              {(snap.visionIndex === 2 ? atteintR3_V3 : atteintR3_V1V2) ? "objectif atteint" : "objectif non atteint"}
-            </b>
+            Stock final (R3) : <b>{fmt(tableR3.stockFinal)}</b> {snap.unit} —{" "}
+            <b style={{ color: atteintR3 ? C.ok : C.bad }}>{atteintR3 ? "objectif atteint" : "objectif non atteint"}</b>
           </div>
 
-          <DetailsOnly>
-            <div style={{ padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12, marginTop: 12 }}>
-              <b>Rappel</b>
-              <div style={{ marginTop: 6 }}>
-                <b>trésorerie fin</b> = <b>trésorerie début</b> + <b>encaissements</b> − <b>décaissements</b>
-              </div>
-            </div>
-          </DetailsOnly>
-
-          <TableAlwaysVisible rows={tableFixed.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
+          <TableAlwaysVisible rows={tableR3.rows} stockLabel={snap.stockLabel} flowInLabel={snap.flowInLabel} flowOutLabel={snap.flowOutLabel} />
 
           <ContinueBar onContinue={onContinue} />
         </Card>
