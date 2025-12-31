@@ -1,7 +1,8 @@
-'use client';
+"use client";
 
 import HelpPanel from "../components/HelpPanel";
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 
 type SnapshotV1 = {
   version: 1;
@@ -10,13 +11,13 @@ type SnapshotV1 = {
   defShortVision: string;
   defLongVision: string;
 
-  stockLabel: string;     // "Trésorerie"
-  unit: string;           // "euros"
-  horizon: number;        // 12 (fixe)
-  flowInLabel: string;    // "Encaissements"
-  flowOutLabel: string;   // "Décaissements"
+  stockLabel: string; // "Trésorerie"
+  unit: string; // "euros"
+  horizon: number; // 12 (fixe)
+  flowInLabel: string; // "Encaissements"
+  flowOutLabel: string; // "Décaissements"
 
-  // Paramètre fixé (dès le départ)
+  // Paramètre FIXE du problème
   initialStock: number;
 
   // R1/R2 : valeurs libres (exploration)
@@ -276,7 +277,7 @@ function BaseEquation({ mode }: { mode: ReadingMode }) {
   );
 }
 
-// Paramètre FIXE du problème
+const LOCK_STRUCTURE = true;
 const TRESORERIE_DEPART_FIXE = 3000;
 
 function defaultSnapshot(): SnapshotV1 {
@@ -315,25 +316,16 @@ function defaultSnapshot(): SnapshotV1 {
   };
 }
 
-// Met à jour l’URL pour rester cohérent avec la vision affichée
-function setVisionInUrl(visionIndex: 0 | 1 | 2) {
-  const q = visionIndex === 0 ? "1" : visionIndex === 1 ? "2" : "3";
-  const url = new URL(window.location.href);
-  url.searchParams.set("vision", q);
-  window.history.replaceState({}, "", url.toString());
-}
-
 export default function ParcoursPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [step, setStep] = useState(0); // 0 vision, 1 R1, 2 R2, 3 R3
   const [snap, setSnap] = useState<SnapshotV1>(() => defaultSnapshot());
-
   const [readingMode, setReadingMode] = useState<ReadingMode>("simple");
 
-  // Drafts R1 (pour pouvoir effacer/retaper) — uniquement flux libres
   const [inDraft, setInDraft] = useState("3000");
   const [outDraft, setOutDraft] = useState("2500");
-
-  const LOCK_STRUCTURE = true;
 
   function syncDraftsFrom(s: SnapshotV1) {
     setInDraft(String(s.r1_inflow));
@@ -341,17 +333,13 @@ export default function ParcoursPage() {
   }
 
   function applyVision(idx: 0 | 1 | 2) {
-    // ✅ important : garder l’URL cohérente avec l’état
-    setVisionInUrl(idx);
-
     if (idx === 0) {
       const v: SnapshotV1 = {
         ...defaultSnapshot(),
         visionIndex: 0,
         visionLabel: "Vision 1 — Rester salarié",
         defShortVision: "Je reste salarié.",
-        defLongVision:
-          "Je garde mon salaire et mes dépenses personnelles. Je vérifie si l’objectif minimal est atteignable.",
+        defLongVision: "Je garde mon salaire et mes dépenses personnelles. Je vérifie si l’objectif minimal est atteignable.",
         addInflow: 0,
         addOutflow: 0,
         addFromPeriod: 1,
@@ -368,8 +356,7 @@ export default function ParcoursPage() {
         visionIndex: 1,
         visionLabel: "Vision 2 — Micro-activité (objectif tôt)",
         defShortVision: "Je reste salarié et j’ajoute une micro-activité.",
-        defLongVision:
-          "J’introduis tôt l’objectif minimal, puis je fixe les paramètres de l’exemple (salaire, dépenses, activité).",
+        defLongVision: "J’introduis tôt l’objectif minimal, puis je fixe les paramètres de l’exemple (salaire, dépenses, activité).",
         addInflow: 1000,
         addOutflow: 500,
         addFromPeriod: 1,
@@ -385,8 +372,7 @@ export default function ParcoursPage() {
       visionIndex: 2,
       visionLabel: "Vision 3 — Micro-activité (objectif tard)",
       defShortVision: "Je regarde d’abord la réalité, puis je compare à l’objectif.",
-      defLongVision:
-        "Je fixe d’abord les paramètres de l’exemple (réalité), puis j’introduis l’objectif minimal seulement après.",
+      defLongVision: "Je fixe d’abord les paramètres de l’exemple (réalité), puis j’introduis l’objectif minimal seulement après.",
       addInflow: 1000,
       addOutflow: 500,
       addFromPeriod: 1,
@@ -396,22 +382,21 @@ export default function ParcoursPage() {
     setStep(0);
   }
 
+  // ✅ Lecture "réactive" de l'URL : si ?vision=1/2/3 change, on applique la bonne vision.
   useEffect(() => {
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const v = params.get("vision");
-      if (v) {
-        const n = Number(v);
-        const idx = n === 2 ? 1 : n === 3 ? 2 : 0;
-        applyVision(idx as 0 | 1 | 2);
-        return;
-      }
-    } catch {
-      // ignore
+    const v = searchParams.get("vision");
+
+    // Si pas de vision, on force ?vision=1 (URL stable)
+    if (!v) {
+      router.replace("/parcours?vision=1");
+      return;
     }
-    applyVision(0);
+
+    const n = Number(v);
+    const idx = n === 2 ? 1 : n === 3 ? 2 : 0;
+    applyVision(idx as 0 | 1 | 2);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   const tableR1R2 = useMemo(
     () =>
@@ -467,11 +452,17 @@ export default function ParcoursPage() {
 
   function onContinue() {
     if (step === 3) {
-      if (snap.visionIndex < 2) {
-        applyVision((snap.visionIndex + 1) as 1 | 2);
+      // On enchaîne automatiquement les visions 1→2→3 en gardant l'URL cohérente
+      if (snap.visionIndex === 0) {
+        router.replace("/parcours?vision=2");
         return;
       }
-      window.location.href = "/";
+      if (snap.visionIndex === 1) {
+        router.replace("/parcours?vision=3");
+        return;
+      }
+      window.location.href = "/problemes";
+
       return;
     }
     setStep((s) => Math.min(3, s + 1));
@@ -504,10 +495,15 @@ export default function ParcoursPage() {
         <h1 style={{ margin: 0 }}>{snap.visionLabel}</h1>
 
         <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-          <a href="/" style={{ fontSize: 14, color: C.link, textDecoration: "underline" }}>Accueil</a>
+          <a href="/" style={{ fontSize: 14, color: C.link, textDecoration: "underline" }}>
+            Accueil
+          </a>
           <a
             href="#"
-            onClick={(e) => { e.preventDefault(); goBack(); }}
+            onClick={(e) => {
+              e.preventDefault();
+              goBack();
+            }}
             style={{ fontSize: 14, color: C.link, textDecoration: "underline" }}
           >
             Revenir
@@ -546,9 +542,7 @@ export default function ParcoursPage() {
       {step === 1 && (
         <Card title="R1 — Mécanique du stock (valeurs libres)">
           <HelpPanel title={helpTitle()}>
-            <p style={{ marginTop: 0 }}>
-              R1 sert à comprendre la mécanique : un stock évolue sous l’effet de deux flux.
-            </p>
+            <p style={{ marginTop: 0 }}>R1 sert à comprendre la mécanique : un stock évolue sous l’effet de deux flux.</p>
             <p style={{ marginBottom: 0 }}>
               Ici, on laisse libres <b>encaissements</b> et <b>décaissements</b> pour voir l’effet sur la trésorerie.
             </p>
@@ -556,7 +550,6 @@ export default function ParcoursPage() {
 
           <ContinueBar onContinue={onContinue} />
 
-          {/* ✅ Toujours l’équation de base en mode Détails */}
           <BaseEquation mode={readingMode} />
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
@@ -586,63 +579,32 @@ export default function ParcoursPage() {
           <HelpPanel title={helpTitle()}>
             {snap.visionIndex === 2 ? (
               <>
-                <p style={{ marginTop: 0 }}>
-                  Vision 3 : on fixe d’abord la réalité (paramètres), puis on introduit l’objectif seulement après.
-                </p>
+                <p style={{ marginTop: 0 }}>Vision 3 : on fixe d’abord la réalité (paramètres), puis on introduit l’objectif seulement après.</p>
                 <p style={{ marginBottom: 0 }}>
                   Ici, <b>pas d’objectif</b> : on prépare la comparaison.
                 </p>
               </>
             ) : (
               <>
-                <p style={{ marginTop: 0 }}>
-                  On introduit l’objectif minimal : c’est une boussole qui resserre l’étude.
-                </p>
-                <p style={{ marginBottom: 0 }}>
-                  Les flux restent libres ici : on peut déjà voir quelles combinaisons atteignent l’objectif.
-                </p>
+                <p style={{ marginTop: 0 }}>On introduit l’objectif minimal : c’est une boussole qui resserre l’étude.</p>
+                <p style={{ marginBottom: 0 }}>Les flux restent libres ici : on peut déjà voir quelles combinaisons atteignent l’objectif.</p>
               </>
             )}
           </HelpPanel>
 
           <ContinueBar onContinue={onContinue} />
 
-          {/* ✅ Toujours l’équation de base en mode Détails */}
           <BaseEquation mode={readingMode} />
 
           {showObjectiveInR2 && (
             <>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginTop: 8 }}>
-  <InputRow
-    label="Trésorerie au départ (fixée)"
-    value={snap.initialStock}
-    disabled={true}
-    onChange={() => {}}
-  />
-  <InputRow
-    label="Objectif minimal (fixe)"
-    value={snap.target}
-    disabled={true}
-    onChange={() => {}}
-  />
+                <InputRow label="Trésorerie au départ (fixée)" value={snap.initialStock} disabled={true} onChange={() => {}} />
+                <InputRow label="Objectif minimal (fixe)" value={snap.target} disabled={true} onChange={() => {}} />
 
-  {/* ✅ R2 : les flux restent libres (Vision 1 et Vision 2) */}
-  <InputRow
-    label="Encaissements (par période) — libre"
-    value={inDraft}
-    disabled={false}
-    onChange={onChangeIn}
-    placeholder="ex. 3000"
-  />
-  <InputRow
-    label="Décaissements (par période) — libre"
-    value={outDraft}
-    disabled={false}
-    onChange={onChangeOut}
-    placeholder="ex. 2500"
-  />
-</div>
-
+                <InputRow label="Encaissements (par période) — libre" value={inDraft} disabled={false} onChange={onChangeIn} placeholder="ex. 3000" />
+                <InputRow label="Décaissements (par période) — libre" value={outDraft} disabled={false} onChange={onChangeOut} placeholder="ex. 2500" />
+              </div>
 
               <div style={{ marginTop: 12, padding: 12, border: `1px solid ${C.softBorder}`, borderRadius: 12 }}>
                 Stock final (R1/R2) : <b>{fmt(tableR1R2.stockFinal)}</b> {snap.unit} —{" "}
@@ -684,17 +646,12 @@ export default function ParcoursPage() {
       {step === 3 && (
         <Card title="R3 — Paramètres fixés + comparaison à l’objectif">
           <HelpPanel title={helpTitle()}>
-            <p style={{ marginTop: 0 }}>
-              Ici, on fixe les paramètres de l’exemple (réalité) et on compare à l’objectif minimal.
-            </p>
-            <p style={{ marginBottom: 0 }}>
-              L’équation de base reste la même.
-            </p>
+            <p style={{ marginTop: 0 }}>Ici, on fixe les paramètres de l’exemple (réalité) et on compare à l’objectif minimal.</p>
+            <p style={{ marginBottom: 0 }}>L’équation de base reste la même.</p>
           </HelpPanel>
 
           <ContinueBar onContinue={onContinue} />
 
-          {/* ✅ Toujours l’équation de base en mode Détails */}
           <BaseEquation mode={readingMode} />
 
           <DetailsOnly mode={readingMode}>
