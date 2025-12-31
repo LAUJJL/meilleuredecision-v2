@@ -1,12 +1,13 @@
 "use client";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 import HelpPanel from "../components/HelpPanel";
 import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 
 // ✅ IMPORTANT : /parcours dépend de ?vision=..., donc on force le rendu dynamique (évite le prerender Vercel)
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+
 
 type SnapshotV1 = {
   version: 1;
